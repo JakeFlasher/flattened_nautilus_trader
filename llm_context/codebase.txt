@@ -1247,3 +1247,367 @@ if __name__ == "__main__":
     else:
         print("[=] All files downloaded successfully.")
 ```
+
+```data_loader_parallel.pyp
+import shutil
+import os
+import re
+import time
+import pandas as pd
+import numpy as np
+from pathlib import Path
+from datetime import datetime
+from concurrent.futures import ProcessPoolExecutor
+from tqdm import tqdm  # pip install tqdm
+
+from nautilus_trader.model import InstrumentId, TradeId, Bar, BarType, BarSpecification, TradeTick, QuoteTick
+from nautilus_trader.core import Data
+from nautilus_trader.model.objects import Price, Quantity
+from nautilus_trader.model.enums import BarAggregation, PriceType, AggressorSide
+from nautilus_trader.persistence.catalog import ParquetDataCatalog
+from nautilus_trader.model.custom import customdataclass
+
+# --- CONFIGURATION ---
+BASE_DIR = Path(__file__).parent.resolve()
+CATALOG_PATH = BASE_DIR / "data/catalog"
+RAW_DATA_ROOT = BASE_DIR / "data/raw/futures"
+
+SYMBOL = "BTCUSDT"
+VENUE = "BINANCE"
+# We define Instrument ID string here to avoid pickling issues with complex objects
+INSTRUMENT_ID_STR = f"{SYMBOL}.{VENUE}"
+
+# --- CUSTOM DATA DEFINITIONS ---
+@customdataclass
+class BinanceFundingRate(Data):
+    instrument_id: InstrumentId
+    rate: float
+    interval_hours: int
+
+@customdataclass
+class BinanceOiData(Data):
+    instrument_id: InstrumentId
+    open_interest_qty: float
+    open_interest_val: float
+    top_trader_ratio: float
+
+@customdataclass
+class BinanceDepthData(Data):
+    instrument_id: InstrumentId
+    percentage: float
+    depth_qty: float
+    notional: float
+
+# --- HELPER FUNCTIONS ---
+
+def ms_to_ns_vectorized(series):
+    """Vectorized conversion of MS to NS."""
+    return (series.astype(np.float64) * 1_000_000).astype(np.uint64)
+
+def parse_iso_ns_vectorized(series):
+    """Vectorized conversion of ISO strings to NS."""
+    return pd.to_datetime(series).astype(np.int64)
+
+def read_csv_fast(file_path):
+    """Reads CSV using PyArrow engine for speed."""
+    try:
+        # Check first row for headers
+        df_peek = pd.read_csv(file_path, nrows=1)
+        if df_peek.empty:
+            return pd.DataFrame()
+
+        # Heuristic for headerless files
+        first_col = str(df_peek.columns[0])
+        header = None if first_col.replace('.', '', 1).isdigit() else 'infer'
+
+        # PyArrow engine is significantly faster for large floats/strings
+        return pd.read_csv(file_path, header=header, engine="pyarrow", dtype_backend="pyarrow")
+    except Exception as e:
+        # Fallback to standard pandas if pyarrow fails on specific formatting
+        try:
+            return pd.read_csv(file_path, header=None if 'header' in locals() and header is None else 'infer')
+        except:
+            return pd.DataFrame()
+
+# --- WORKER FUNCTIONS (Must be top-level for pickling) ---
+
+def process_quotes(file_path, instrument_id):
+    df = read_csv_fast(file_path)
+    if df.empty: return []
+
+    # Normalize columns
+    if len(df.columns) >= 7:
+        df.columns = ['update_id', 'bid_price', 'bid_qty', 'ask_price', 'ask_qty', 'transact_time', 'event_time'][:len(df.columns)]
+
+    # Vectorized Pre-processing
+    # Pre-format prices/qtys to strings to avoid f-string overhead in loop
+    # We use map with a format string which is faster in C-land than python loop f-strings
+    df['bid_p_str'] = df['bid_price'].map('{:.2f}'.format)
+    df['ask_p_str'] = df['ask_price'].map('{:.2f}'.format)
+    df['bid_q_str'] = df['bid_qty'].map('{:.3f}'.format)
+    df['ask_q_str'] = df['ask_qty'].map('{:.3f}'.format)
+
+    # Vectorized Time
+    ts_values = ms_to_ns_vectorized(df['transact_time']).to_numpy()
+
+    # Convert to numpy arrays for faster iteration
+    bid_p = df['bid_p_str'].to_numpy()
+    ask_p = df['ask_p_str'].to_numpy()
+    bid_q = df['bid_q_str'].to_numpy()
+    ask_q = df['ask_q_str'].to_numpy()
+
+    ticks = []
+    # Using zip on numpy arrays is faster than df.itertuples
+    for i in range(len(df)):
+        ticks.append(QuoteTick(
+            instrument_id=instrument_id,
+            bid_price=Price.from_str(bid_p[i]),
+            ask_price=Price.from_str(ask_p[i]),
+            bid_size=Quantity.from_str(bid_q[i]),
+            ask_size=Quantity.from_str(ask_q[i]),
+            ts_event=ts_values[i],
+            ts_init=ts_values[i]
+        ))
+    return ticks
+
+def process_agg_trades(file_path, instrument_id):
+    df = read_csv_fast(file_path)
+    if df.empty: return []
+
+    if len(df.columns) >= 7:
+        df.columns = ['agg_trade_id', 'price', 'quantity', 'first_id', 'last_id', 'transact_time', 'is_buyer_maker'][:len(df.columns)]
+
+    # Vectorized String Formatting
+    df['p_str'] = df['price'].map('{:.2f}'.format)
+    df['q_str'] = df['quantity'].map('{:.3f}'.format)
+
+    ts_values = ms_to_ns_vectorized(df['transact_time']).to_numpy()
+    p_strs = df['p_str'].to_numpy()
+    q_strs = df['q_str'].to_numpy()
+    ids = df['agg_trade_id'].astype(str).to_numpy()
+    is_maker = df['is_buyer_maker'].to_numpy()
+
+    ticks = []
+    for i in range(len(df)):
+        side = AggressorSide.SELLER if is_maker[i] else AggressorSide.BUYER
+        ticks.append(TradeTick(
+            instrument_id=instrument_id,
+            price=Price.from_str(p_strs[i]),
+            size=Quantity.from_str(q_strs[i]),
+            aggressor_side=side,
+            trade_id=TradeId(ids[i]),
+            ts_event=ts_values[i],
+            ts_init=ts_values[i]
+        ))
+    return ticks
+
+def process_klines(file_path, instrument_id):
+    df = read_csv_fast(file_path)
+    if df.empty: return []
+
+    expected_cols = ['open_time', 'open', 'high', 'low', 'close', 'volume']
+    # Ensure we map columns correctly even if extra cols exist
+    df = df.iloc[:, :len(expected_cols)]
+    df.columns = expected_cols
+
+    bar_type = BarType(
+        instrument_id=instrument_id,
+        bar_spec=BarSpecification(1, BarAggregation.MINUTE, PriceType.LAST)
+    )
+
+    # Vectorized Formats
+    df['o_str'] = df['open'].map('{:.2f}'.format)
+    df['h_str'] = df['high'].map('{:.2f}'.format)
+    df['l_str'] = df['low'].map('{:.2f}'.format)
+    df['c_str'] = df['close'].map('{:.2f}'.format)
+    df['v_str'] = df['volume'].map('{:.3f}'.format)
+
+    ts_values = ms_to_ns_vectorized(df['open_time']).to_numpy()
+    o_s = df['o_str'].to_numpy()
+    h_s = df['h_str'].to_numpy()
+    l_s = df['l_str'].to_numpy()
+    c_s = df['c_str'].to_numpy()
+    v_s = df['v_str'].to_numpy()
+
+    bars = []
+    for i in range(len(df)):
+        bars.append(Bar(
+            bar_type=bar_type,
+            open=Price.from_str(o_s[i]),
+            high=Price.from_str(h_s[i]),
+            low=Price.from_str(l_s[i]),
+            close=Price.from_str(c_s[i]),
+            volume=Quantity.from_str(v_s[i]),
+            ts_event=ts_values[i],
+            ts_init=ts_values[i]
+        ))
+    return bars
+
+def process_metrics(file_path, instrument_id):
+    df = read_csv_fast(file_path)
+    if df.empty: return []
+
+    if 'sum_open_interest' not in df.columns and len(df.columns) >= 4:
+        df.columns = ['create_time', 'symbol', 'sum_open_interest', 'sum_open_interest_value'] + list(df.columns[4:])
+
+    data = []
+    for row in df.itertuples(index=False):
+        try:
+            ts = int(pd.Timestamp(row.create_time).timestamp() * 1e9)
+            ratio = float(row.count_toptrader_long_short_ratio) if hasattr(row, 'count_toptrader_long_short_ratio') else 0.0
+            data.append(BinanceOiData(
+                instrument_id=instrument_id,
+                open_interest_qty=float(row.sum_open_interest),
+                open_interest_val=float(row.sum_open_interest_value),
+                top_trader_ratio=ratio,
+                ts_event=ts,
+                ts_init=ts
+            ))
+        except: continue
+    return data
+
+def process_depth(file_path, instrument_id):
+    df = read_csv_fast(file_path)
+    if df.empty: return []
+    if 'updateId' in df.columns or len(df.columns) < 4: return []
+
+    data = []
+    for row in df.itertuples(index=False):
+        try:
+            ts = int(pd.Timestamp(row.timestamp).timestamp() * 1e9)
+            data.append(BinanceDepthData(
+                instrument_id=instrument_id,
+                percentage=float(row.percentage),
+                depth_qty=float(row.depth),
+                notional=float(row.notional),
+                ts_event=ts,
+                ts_init=ts
+            ))
+        except: continue
+    return data
+
+def process_day_task(args):
+    """
+    Worker entry point.
+    args: (date_str, file_paths_list, catalog_path_str)
+    """
+    date_str, file_paths, catalog_path_str = args
+
+    # Re-instantiate InstrumentId and Catalog inside the process
+    # This prevents lock contention and pickling errors
+    instrument_id = InstrumentId.from_str(INSTRUMENT_ID_STR)
+    catalog = ParquetDataCatalog(catalog_path_str)
+
+    results = {"quotes": 0, "trades": 0, "bars": 0, "other": 0}
+
+    for file_path in file_paths:
+        parent_dir = file_path.parent.name
+        data_objects = []
+
+        try:
+            if "bookTicker" in parent_dir:
+                data_objects = process_quotes(file_path, instrument_id)
+                results["quotes"] += len(data_objects)
+            elif "aggTrades" in parent_dir:
+                data_objects = process_agg_trades(file_path, instrument_id)
+                results["trades"] += len(data_objects)
+            elif "klines" in parent_dir:
+                data_objects = process_klines(file_path, instrument_id)
+                results["bars"] += len(data_objects)
+            elif "metrics" in parent_dir:
+                data_objects = process_metrics(file_path, instrument_id)
+                results["other"] += len(data_objects)
+            elif "bookDepth" in parent_dir:
+                data_objects = process_depth(file_path, instrument_id)
+                results["other"] += len(data_objects)
+
+            # Batch Write
+            if data_objects:
+                catalog.write_data(data_objects)
+
+        except Exception as e:
+            print(f"Error processing {file_path.name}: {e}")
+
+    return f"{date_str}: {results}"
+
+# --- MAIN ORCHESTRATOR ---
+
+def ingest_funding_sequential(catalog, root_path):
+    """Funding rates are small, keep sequential."""
+    monthly_path = root_path / "monthly" / "fundingRate"
+    if not monthly_path.exists(): return
+
+    print("[-] Ingesting Monthly Funding Rates...")
+    files = sorted(monthly_path.glob("*.csv"))
+    inst_id = InstrumentId.from_str(INSTRUMENT_ID_STR)
+
+    for file_path in files:
+        df = read_csv_fast(file_path)
+        if df.empty: continue
+        if 'calc_time' not in df.columns:
+            df.columns = ['calc_time', 'symbol', 'last_funding_rate', 'funding_interval_hours'] + list(df.columns[4:])
+
+        data = []
+        for row in df.itertuples(index=False):
+            ts = int(float(row.calc_time) * 1_000_000)
+            data.append(BinanceFundingRate(
+                instrument_id=inst_id,
+                rate=float(row.last_funding_rate),
+                interval_hours=int(row.funding_interval_hours),
+                ts_event=ts,
+                ts_init=ts
+            ))
+        if data: catalog.write_data(data)
+
+def main():
+    # 1. Setup Catalog
+    if CATALOG_PATH.exists():
+        print("[-] Cleaning existing catalog...")
+        shutil.rmtree(CATALOG_PATH)
+    CATALOG_PATH.mkdir(parents=True, exist_ok=True)
+
+    # Initialize catalog once in main to create folder structures if needed
+    # (Though workers will instantiate their own handles)
+    catalog = ParquetDataCatalog(CATALOG_PATH)
+
+    print(f"=== HIGH PERFORMANCE DATA INGESTION ===")
+    print(f"Workers: {os.cpu_count()}")
+
+    # 2. Ingest Funding (Sequential)
+    ingest_funding_sequential(catalog, RAW_DATA_ROOT)
+
+    # 3. Group Files by Date
+    daily_root = RAW_DATA_ROOT / "daily"
+    files_by_date = {}
+
+    print("[-] Scanning files...")
+    all_files = list(daily_root.rglob("*.csv"))
+
+    for file_path in all_files:
+        match = re.search(r"(\d{4})-(\d{2})-(\d{2})", file_path.name)
+        if match:
+            dt_key = match.group(0)
+            if dt_key not in files_by_date:
+                files_by_date[dt_key] = []
+            files_by_date[dt_key].append(file_path)
+
+    # 4. Prepare Tasks
+    sorted_dates = sorted(files_by_date.keys())
+    tasks = []
+    for dt in sorted_dates:
+        # Pass strings to avoid pickling complex objects
+        tasks.append((dt, files_by_date[dt], str(CATALOG_PATH)))
+
+    print(f"[-] Starting Parallel Processing of {len(tasks)} days...")
+
+    # 5. Execute in Parallel
+    # Using ProcessPoolExecutor to bypass GIL
+    with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
+        # Use tqdm for progress bar
+        results = list(tqdm(executor.map(process_day_task, tasks), total=len(tasks)))
+
+    print("\n[=] Ingestion Complete.")
+
+if __name__ == "__main__":
+    main()
+```
