@@ -1,0 +1,5275 @@
+<documents><document index="2310">
+<source>nautilus_trader/examples/__init__.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+</document_content>
+</document>
+<document index="2311">
+<source>nautilus_trader/examples/algorithms/__init__.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+</document_content>
+</document>
+<document index="2312">
+<source>nautilus_trader/examples/algorithms/blank.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+from nautilus_trader.common.component import LogColor
+from nautilus_trader.config import ExecAlgorithmConfig
+from nautilus_trader.execution.algorithm import ExecAlgorithm
+from nautilus_trader.model.identifiers import ExecAlgorithmId
+from nautilus_trader.model.orders import Order
+from nautilus_trader.model.orders import OrderList
+
+
+class MyExecAlgorithmConfig(ExecAlgorithmConfig, frozen=True):
+    """
+    Configuration for ``MyExecAlgorithm`` instances.
+
+    Parameters
+    ----------
+    exec_algorithm_id : str | ExecAlgorithmId, optional
+        The execution algorithm ID (will override default which is the class name).
+
+    """
+
+    exec_algorithm_id: ExecAlgorithmId | None = None
+
+
+class MyExecAlgorithm(ExecAlgorithm):
+    """
+    A blank template execution algorithm.
+
+    Parameters
+    ----------
+    config : MyExecAlgorithmConfig
+        The configuration for the instance.
+
+    """
+
+    def __init__(self, config: MyExecAlgorithmConfig) -> None:
+        super().__init__(config)
+        # Optionally implement further initialization
+
+    def on_start(self) -> None:
+        """
+        Actions to be performed when the algorithm component is started.
+        """
+        # Optionally implement
+
+    def on_stop(self) -> None:
+        """
+        Actions to be performed when the algorithm component is stopped.
+        """
+        # Optionally implement
+
+    def on_reset(self) -> None:
+        """
+        Actions to be performed when the algorithm component is reset.
+        """
+        # Optionally implement
+
+    def on_dispose(self) -> None:
+        """
+        Actions to be performed when the algorithm component is disposed.
+
+        Cleanup any resources used by the strategy here.
+
+        """
+        # Optionally implement
+
+    def on_save(self) -> dict[str, bytes]:
+        """
+        Actions to be performed when the algorithm component is saved.
+
+        Create and return a state dictionary of values to be saved.
+
+        Returns
+        -------
+        dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+        return {}  # Optionally implement
+
+    def on_load(self, state: dict[str, bytes]) -> None:
+        """
+        Actions to be performed when the algorithm component is loaded.
+
+        Saved state values will be contained in the give state dictionary.
+
+        Parameters
+        ----------
+        state : dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+        # Optionally implement
+
+    def on_order(self, order: Order) -> None:
+        """
+        Actions to be performed when running and receives an order.
+
+        Parameters
+        ----------
+        order : Order
+            The order to be handled.
+
+        Warnings
+        --------
+        System method (not intended to be called by user code).
+
+        """
+        self.log.info(repr(order), LogColor.CYAN)
+        # Optionally implement
+
+    def on_order_list(self, order_list: OrderList) -> None:
+        """
+        Actions to be performed when running and receives an order list.
+
+        Parameters
+        ----------
+        order_list : OrderList
+            The order list to be handled.
+
+        Warnings
+        --------
+        System method (not intended to be called by user code).
+
+        """
+        self.log.info(repr(order_list), LogColor.CYAN)
+        # Optionally implement
+
+</document_content>
+</document>
+<document index="2313">
+<source>nautilus_trader/examples/algorithms/twap.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+import math
+from datetime import timedelta
+from decimal import ROUND_DOWN
+from decimal import Decimal
+
+from nautilus_trader.common.enums import LogColor
+from nautilus_trader.common.events import TimeEvent
+from nautilus_trader.config import ExecAlgorithmConfig
+from nautilus_trader.core.correctness import PyCondition
+from nautilus_trader.execution.algorithm import ExecAlgorithm
+from nautilus_trader.model.enums import OrderType
+from nautilus_trader.model.identifiers import ClientOrderId
+from nautilus_trader.model.identifiers import ExecAlgorithmId
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.model.objects import Quantity
+from nautilus_trader.model.orders import MarketOrder
+from nautilus_trader.model.orders import Order
+
+
+class TWAPExecAlgorithmConfig(ExecAlgorithmConfig, frozen=True):
+    """
+    Configuration for ``TWAPExecAlgorithm`` instances.
+
+    This configuration class defines the necessary parameters for a Time-Weighted Average Price
+    (TWAP) execution algorithm, which aims to execute orders evenly spread over a specified
+    time horizon, at regular intervals.
+
+    Parameters
+    ----------
+    exec_algorithm_id : ExecAlgorithmId
+        The execution algorithm ID (will override default which is the class name).
+
+    """
+
+    exec_algorithm_id: ExecAlgorithmId | None = ExecAlgorithmId("TWAP")
+
+
+class TWAPExecAlgorithm(ExecAlgorithm):
+    """
+    Provides a Time-Weighted Average Price (TWAP) execution algorithm.
+
+    The TWAP execution algorithm aims to execute orders by evenly spreading them over a specified
+    time horizon. The algorithm receives a primary order representing the total size and direction
+    then splits this by spawning smaller child orders, which are then executed at regular intervals
+    throughout the time horizon.
+
+    This helps to reduce the impact of the full size of the primary order on the market, by
+    minimizing the concentration of trade size at any given time.
+
+    The algorithm will immediately submit the first order, with the final order submitted being the
+    primary order at the end of the horizon period.
+
+    Parameters
+    ----------
+    config : TWAPExecAlgorithmConfig, optional
+        The configuration for the instance.
+
+    """
+
+    def __init__(self, config: TWAPExecAlgorithmConfig | None = None) -> None:
+        if config is None:
+            config = TWAPExecAlgorithmConfig()
+        super().__init__(config)
+
+        self._scheduled_sizes: dict[ClientOrderId, list[Quantity]] = {}
+
+    def on_start(self) -> None:
+        """
+        Actions to be performed when the algorithm component is started.
+        """
+        # Optionally implement
+
+    def on_stop(self) -> None:
+        """
+        Actions to be performed when the algorithm component is stopped.
+        """
+        self.clock.cancel_timers()
+
+    def on_reset(self) -> None:
+        """
+        Actions to be performed when the algorithm component is reset.
+        """
+        self._scheduled_sizes.clear()
+
+    def on_save(self) -> dict[str, bytes]:
+        """
+        Actions to be performed when the algorithm component is saved.
+
+        Create and return a state dictionary of values to be saved.
+
+        Returns
+        -------
+        dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+        return {}  # Optionally implement
+
+    def on_load(self, state: dict[str, bytes]) -> None:
+        """
+        Actions to be performed when the algorithm component is loaded.
+
+        Saved state values will be contained in the give state dictionary.
+
+        Parameters
+        ----------
+        state : dict[str, bytes]
+            The algorithm component state dictionary.
+
+        """
+        # Optionally implement
+
+    def round_decimal_down(self, amount: Decimal, precision: int) -> Decimal:
+        return amount.quantize(Decimal(f"1e-{precision}"), rounding=ROUND_DOWN)
+
+    def on_order(self, order: Order) -> None:
+        """
+        Actions to be performed when running and receives an order.
+
+        Parameters
+        ----------
+        order : Order
+            The order to be handled.
+
+        Warnings
+        --------
+        System method (not intended to be called by user code).
+
+        """
+        PyCondition.not_in(
+            order.client_order_id,
+            self._scheduled_sizes,
+            "order.client_order_id",
+            "self._scheduled_sizes",
+        )
+        self.log.info(repr(order), LogColor.CYAN)
+
+        if order.order_type != OrderType.MARKET:
+            self.log.error(
+                f"Cannot execute order: only implemented for market orders, {order.order_type=}",
+            )
+            return
+
+        instrument = self.cache.instrument(order.instrument_id)
+        if not instrument:
+            self.log.error(
+                f"Cannot execute order: instrument {order.instrument_id} not found",
+            )
+            return
+
+        # Validate execution parameters
+        exec_params = order.exec_algorithm_params
+        if not exec_params:
+            self.log.error(
+                f"Cannot execute order: "
+                f"`exec_algorithm_params` not found for primary order {order!r}",
+            )
+            return
+
+        horizon_secs = exec_params.get("horizon_secs")
+        if not horizon_secs:
+            self.log.error(
+                f"Cannot execute order: "
+                f"`horizon_secs` not found in `exec_algorithm_params` {exec_params}",
+            )
+            return
+
+        interval_secs = exec_params.get("interval_secs")
+        if not interval_secs:
+            self.log.error(
+                f"Cannot execute order: "
+                f"`interval_secs` not found in `exec_algorithm_params` {exec_params}",
+            )
+            return
+
+        if horizon_secs < interval_secs:
+            self.log.error(
+                f"Cannot execute order: {horizon_secs=} was less than {interval_secs=}",
+            )
+            return
+
+        # Calculate the number of intervals
+        num_intervals: int = math.floor(horizon_secs / interval_secs)
+
+        # Divide the order quantity evenly and determine any remainder
+        quotient = order.quantity.as_decimal() / num_intervals
+        floored_quotient = self.round_decimal_down(quotient, instrument.size_precision)
+        qty_quotient = instrument.make_qty(floored_quotient)
+        qty_per_interval = instrument.make_qty(qty_quotient)
+        qty_remainder = order.quantity.as_decimal() - (floored_quotient * num_intervals)
+
+        if (
+            qty_per_interval == order.quantity
+            or qty_per_interval < instrument.size_increment
+            or (instrument.min_quantity and qty_per_interval < instrument.min_quantity)
+        ):
+            # Immediately submit first order for entire size
+            self.log.warning(f"Submitting for entire size {qty_per_interval=}, {order.quantity=}")
+            self.submit_order(order)
+            return  # Done
+
+        scheduled_sizes: list[Quantity] = [qty_per_interval] * num_intervals
+        if qty_remainder:
+            scheduled_sizes.append(instrument.make_qty(qty_remainder))
+
+        assert sum(scheduled_sizes) == order.quantity
+        self.log.info(f"Order execution size schedule: {scheduled_sizes}", LogColor.BLUE)
+
+        self._scheduled_sizes[order.client_order_id] = scheduled_sizes
+        first_qty: Quantity = scheduled_sizes.pop(0)
+
+        spawned_order: MarketOrder = self.spawn_market(
+            primary=order,
+            quantity=first_qty,
+            time_in_force=order.time_in_force,
+            reduce_only=order.is_reduce_only,
+            tags=order.tags,
+        )
+
+        self.submit_order(spawned_order)
+
+        # Set up timer
+        self.clock.set_timer(
+            name=order.client_order_id.value,
+            interval=timedelta(seconds=interval_secs),
+            callback=self.on_time_event,
+        )
+        self.log.info(
+            f"Started TWAP execution for {order.client_order_id}: "
+            f"{horizon_secs=}, {interval_secs=}",
+            LogColor.BLUE,
+        )
+
+    def on_time_event(self, event: TimeEvent) -> None:
+        """
+        Actions to be performed when the algorithm receives a time event.
+
+        Parameters
+        ----------
+        event : TimeEvent
+            The time event received.
+
+        """
+        self.log.info(repr(event), LogColor.CYAN)
+
+        exec_spawn_id = ClientOrderId(event.name)
+
+        primary: Order = self.cache.order(exec_spawn_id)
+        if not primary:
+            self.log.error(f"Cannot find primary order for {exec_spawn_id=}")
+            return
+
+        if primary.is_closed:
+            self.complete_sequence(primary.client_order_id)
+            return
+
+        instrument: Instrument = self.cache.instrument(primary.instrument_id)
+        if not instrument:
+            self.log.error(
+                f"Cannot execute order: instrument {primary.instrument_id} not found",
+            )
+            return
+
+        scheduled_sizes = self._scheduled_sizes.get(exec_spawn_id)
+        if scheduled_sizes is None:
+            self.log.error(f"Cannot find scheduled sizes for {exec_spawn_id=}")
+            return
+
+        if not scheduled_sizes:
+            self.log.warning(f"No more size to execute for {exec_spawn_id=}")
+            return
+
+        quantity: Quantity = instrument.make_qty(scheduled_sizes.pop(0))
+        if not scheduled_sizes:  # Final quantity
+            self.submit_order(primary)
+            self.complete_sequence(primary.client_order_id)
+            return
+
+        spawned_order: MarketOrder = self.spawn_market(
+            primary=primary,
+            quantity=quantity,
+            time_in_force=primary.time_in_force,
+            reduce_only=primary.is_reduce_only,
+            tags=primary.tags,
+        )
+
+        self.submit_order(spawned_order)
+
+    def complete_sequence(self, exec_spawn_id: ClientOrderId) -> None:
+        """
+        Complete an execution sequence.
+
+        Parameters
+        ----------
+        exec_spawn_id : ClientOrderId
+            The execution spawn ID to complete.
+
+        """
+        if exec_spawn_id.value in self.clock.timer_names:
+            self.clock.cancel_timer(exec_spawn_id.value)
+        self._scheduled_sizes.pop(exec_spawn_id, None)
+        self.log.info(f"Completed TWAP execution for {exec_spawn_id}", LogColor.BLUE)
+
+</document_content>
+</document>
+<document index="2314">
+<source>nautilus_trader/examples/indicators/__init__.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+</document_content>
+</document>
+<document index="2315">
+<source>nautilus_trader/examples/indicators/ema_python.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+from nautilus_trader.core.correctness import PyCondition
+from nautilus_trader.indicators import Indicator
+from nautilus_trader.model.data import Bar
+from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model.data import TradeTick
+from nautilus_trader.model.enums import PriceType
+
+
+# It's generally recommended to code indicators in Cython as per the built-in
+# indicators found in the `indicators` subpackage. This is an example
+# demonstrating an equivalent EMA indicator written in Python.
+
+# Note: The `MovingAverage` base class has not being used in this example to
+# provide more clarity on how to implement custom indicators. Basically you need
+# to inherit from `Indicator` and override the methods shown below.
+
+
+class PyExponentialMovingAverage(Indicator):
+    """
+    An indicator which calculates an exponential moving average across a rolling window.
+
+    Parameters
+    ----------
+    period : int
+        The rolling window period for the indicator (> 0).
+    price_type : PriceType
+        The specified price type for extracting values from quotes.
+
+    Raises
+    ------
+    ValueError
+        If `period` is not positive (> 0).
+
+    """
+
+    def __init__(self, period: int, price_type: PriceType = PriceType.LAST):
+        PyCondition.positive_int(period, "period")
+        super().__init__(params=[period])
+
+        self.period = period
+        self.price_type = price_type
+        self.alpha = 2.0 / (period + 1.0)
+        self.value = 0.0  # <-- stateful value
+        self.count = 0  # <-- stateful value
+
+    def handle_quote_tick(self, tick: QuoteTick):
+        """
+        Update the indicator with the given quote tick.
+
+        Parameters
+        ----------
+        tick : QuoteTick
+            The update tick to handle.
+
+        """
+        PyCondition.not_none(tick, "tick")
+
+        self.update_raw(tick.extract_price(self.price_type).as_double())
+
+    def handle_trade_tick(self, tick: TradeTick):
+        """
+        Update the indicator with the given trade tick.
+
+        Parameters
+        ----------
+        tick : TradeTick
+            The update tick to handle.
+
+        """
+        PyCondition.not_none(tick, "tick")
+
+        self.update_raw(tick.price.as_double())
+
+    def handle_bar(self, bar: Bar):
+        """
+        Update the indicator with the given bar.
+
+        Parameters
+        ----------
+        bar : Bar
+            The update bar to handle.
+
+        """
+        PyCondition.not_none(bar, "bar")
+
+        self.update_raw(bar.close.as_double())
+
+    def update_raw(self, value: float):
+        """
+        Update the indicator with the given raw value.
+
+        Parameters
+        ----------
+        value : double
+            The update value.
+
+        """
+        # Check if this is the initial input
+        if not self.has_inputs:
+            self.value = value
+
+        self.value = self.alpha * value + ((1.0 - self.alpha) * self.value)
+        self.count += 1
+
+        # Initialization logic
+        if not self.initialized:
+            self._set_has_inputs(True)
+            if self.count >= self.period:
+                self._set_initialized(True)
+
+    def _reset(self):
+        # Override this method to reset stateful values introduced in the class.
+        # This method will be called by the base when `.reset()` is called.
+        self.value = 0.0
+        self.count = 0
+
+</document_content>
+</document>
+<document index="2316">
+<source>nautilus_trader/examples/strategies/__init__.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+</document_content>
+</document>
+<document index="2317">
+<source>nautilus_trader/examples/strategies/blank.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+from nautilus_trader.config import StrategyConfig
+from nautilus_trader.core.data import Data
+from nautilus_trader.core.message import Event
+from nautilus_trader.model.data import Bar
+from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model.data import TradeTick
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.trading.strategy import Strategy
+
+
+class MyStrategyConfig(StrategyConfig, frozen=True):
+    """
+    Configuration for ``MyStrategy`` instances.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+
+    """
+
+    instrument_id: InstrumentId
+
+
+class MyStrategy(Strategy):
+    """
+    A blank template strategy.
+
+    Parameters
+    ----------
+    config : MyStrategyConfig
+        The configuration for the instance.
+
+    """
+
+    def __init__(self, config: MyStrategyConfig) -> None:
+        super().__init__(config)
+
+    def on_start(self) -> None:
+        """
+        Actions to be performed when the strategy is started.
+        """
+        # Optionally implement
+
+    def on_stop(self) -> None:
+        """
+        Actions to be performed when the strategy is stopped.
+        """
+        # Optionally implement
+
+    def on_reset(self) -> None:
+        """
+        Actions to be performed when the strategy is reset.
+        """
+        # Optionally implement
+
+    def on_dispose(self) -> None:
+        """
+        Actions to be performed when the strategy is disposed.
+
+        Cleanup any resources used by the strategy here.
+
+        """
+        # Optionally implement
+
+    def on_save(self) -> dict[str, bytes]:
+        """
+        Actions to be performed when the strategy is saved.
+
+        Create and return a state dictionary of values to be saved.
+
+        Returns
+        -------
+        dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+        return {}  # Optionally implement
+
+    def on_load(self, state: dict[str, bytes]) -> None:
+        """
+        Actions to be performed when the strategy is loaded.
+
+        Saved state values will be contained in the give state dictionary.
+
+        Parameters
+        ----------
+        state : dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+        # Optionally implement
+
+    def on_instrument(self, instrument: Instrument) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an instrument.
+
+        Parameters
+        ----------
+        instrument : Instrument
+            The instrument received.
+
+        """
+        # Optionally implement
+
+    def on_quote_tick(self, tick: QuoteTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a quote tick.
+
+        Parameters
+        ----------
+        tick : QuoteTick
+            The tick received.
+
+        """
+        # Optionally implement
+
+    def on_trade_tick(self, tick: TradeTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a trade tick.
+
+        Parameters
+        ----------
+        tick : TradeTick
+            The tick received.
+
+        """
+        # Optionally implement
+
+    def on_bar(self, bar: Bar) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a bar.
+
+        Parameters
+        ----------
+        bar : Bar
+            The bar received.
+
+        """
+        # Optionally implement
+
+    def buy(self) -> None:
+        """
+        Users simple buy method (example).
+        """
+        # Optionally implement
+
+    def sell(self) -> None:
+        """
+        Users simple sell method (example).
+        """
+        # Optionally implement
+
+    def on_data(self, data: Data) -> None:
+        """
+        Actions to be performed when the strategy is running and receives data.
+
+        Parameters
+        ----------
+        data : Data
+            The data received.
+
+        """
+        # Optionally implement
+
+    def on_event(self, event: Event) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an event.
+
+        Parameters
+        ----------
+        event : Event
+            The event received.
+
+        """
+        # Optionally implement
+
+</document_content>
+</document>
+<document index="2318">
+<source>nautilus_trader/examples/strategies/ema_cross.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+from decimal import Decimal
+
+import pandas as pd
+
+from nautilus_trader.common.enums import LogColor
+from nautilus_trader.config import PositiveInt
+from nautilus_trader.config import StrategyConfig
+from nautilus_trader.core.correctness import PyCondition
+from nautilus_trader.core.data import Data
+from nautilus_trader.core.message import Event
+from nautilus_trader.indicators import ExponentialMovingAverage
+from nautilus_trader.model.book import OrderBook
+from nautilus_trader.model.data import Bar
+from nautilus_trader.model.data import BarType
+from nautilus_trader.model.data import OrderBookDeltas
+from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model.data import TradeTick
+from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.enums import TimeInForce
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.model.objects import Quantity
+from nautilus_trader.model.orders import MarketOrder
+from nautilus_trader.trading.strategy import Strategy
+
+
+# *** THIS IS A TEST STRATEGY WITH NO ALPHA ADVANTAGE WHATSOEVER. ***
+# *** IT IS NOT INTENDED TO BE USED TO TRADE LIVE WITH REAL MONEY. ***
+
+
+class EMACrossConfig(StrategyConfig, frozen=True):
+    """
+    Configuration for ``EMACross`` instances.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+    bar_type : BarType
+        The bar type for the strategy.
+    trade_size : Decimal
+        The position size per trade.
+    fast_ema_period : int, default 10
+        The fast EMA period.
+    slow_ema_period : int, default 20
+        The slow EMA period.
+    subscribe_quote_ticks : bool, default False
+        If quotes should be subscribed to.
+    subscribe_trade_ticks : bool, default True
+        If trades should be subscribed to.
+    request_bars : bool, default True
+        If historical bars should be requested on strategy start.
+    unsubscribe_data_on_stop : bool, default True
+        If live data feeds should be unsubscribed on strategy stop.
+    order_quantity_precision : int, optional
+        The quantity precision for strategy market orders.
+    order_time_in_force : TimeInForce, optional
+        The time in force for strategy market orders.
+    close_positions_on_stop : bool, default True
+        If all open positions should be closed on strategy stop.
+    reduce_only_on_stop : bool, default True
+        If position closing market orders on stop should be reduce-only.
+
+    """
+
+    instrument_id: InstrumentId
+    bar_type: BarType
+    trade_size: Decimal
+    fast_ema_period: PositiveInt = 10
+    slow_ema_period: PositiveInt = 20
+    subscribe_quote_ticks: bool = False
+    subscribe_trade_ticks: bool = True
+    request_bars: bool = True
+    unsubscribe_data_on_stop: bool = True
+    order_quantity_precision: int | None = None
+    order_time_in_force: TimeInForce | None = None
+    close_positions_on_stop: bool = True
+    reduce_only_on_stop: bool = True
+
+
+class EMACross(Strategy):
+    """
+    A simple moving average cross example strategy.
+
+    When the fast EMA crosses the slow EMA then enter a position at the market
+    in that direction.
+
+    Parameters
+    ----------
+    config : EMACrossConfig
+        The configuration for the instance.
+
+    Raises
+    ------
+    ValueError
+        If `config.fast_ema_period` is not less than `config.slow_ema_period`.
+
+    """
+
+    def __init__(self, config: EMACrossConfig) -> None:
+        PyCondition.is_true(
+            config.fast_ema_period < config.slow_ema_period,
+            "{config.fast_ema_period=} must be less than {config.slow_ema_period=}",
+        )
+        super().__init__(config)
+
+        self.instrument: Instrument = None
+
+        # Create the indicators for the strategy
+        self.fast_ema = ExponentialMovingAverage(config.fast_ema_period)
+        self.slow_ema = ExponentialMovingAverage(config.slow_ema_period)
+
+    def on_start(self) -> None:
+        """
+        Actions to be performed on strategy start.
+        """
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
+            self.stop()
+            return
+
+        # Register the indicators for updating
+        self.register_indicator_for_bars(self.config.bar_type, self.fast_ema)
+        self.register_indicator_for_bars(self.config.bar_type, self.slow_ema)
+
+        # Get historical data
+        if self.config.request_bars:
+            self.request_bars(
+                self.config.bar_type,
+                start=self._clock.utc_now() - pd.Timedelta(days=1),
+            )
+
+        # self.request_quote_ticks(self.config.instrument_id)
+        # self.request_trade_ticks(self.config.instrument_id)
+
+        # Subscribe to real-time data
+        self.subscribe_bars(self.config.bar_type)
+
+        if self.config.subscribe_quote_ticks:
+            self.subscribe_quote_ticks(self.config.instrument_id)
+        if self.config.subscribe_trade_ticks:
+            self.subscribe_trade_ticks(self.config.instrument_id)
+
+        # self.subscribe_order_book_deltas(self.config.instrument_id, depth=20)  # For debugging
+        # self.subscribe_order_book_at_interval(self.config.instrument_id, depth=20)  # For debugging
+
+    def on_instrument(self, instrument: Instrument) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an instrument.
+
+        Parameters
+        ----------
+        instrument : Instrument
+            The instrument received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(instrument), LogColor.CYAN)
+
+    def on_order_book_deltas(self, deltas: OrderBookDeltas) -> None:
+        """
+        Actions to be performed when the strategy is running and receives order book
+        deltas.
+
+        Parameters
+        ----------
+        deltas : OrderBookDeltas
+            The order book deltas received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(deltas), LogColor.CYAN)
+
+    def on_order_book(self, order_book: OrderBook) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an order book.
+
+        Parameters
+        ----------
+        order_book : OrderBook
+            The order book received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(order_book), LogColor.CYAN)
+
+    def on_quote_tick(self, tick: QuoteTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a quote tick.
+
+        Parameters
+        ----------
+        tick : QuoteTick
+            The tick received.
+
+        """
+        # For debugging (must add a subscription)
+        self.log.info(repr(tick), LogColor.CYAN)
+
+    def on_trade_tick(self, tick: TradeTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a trade tick.
+
+        Parameters
+        ----------
+        tick : TradeTick
+            The tick received.
+
+        """
+        # For debugging (must add a subscription)
+        self.log.info(repr(tick), LogColor.CYAN)
+
+    def on_bar(self, bar: Bar) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a bar.
+
+        Parameters
+        ----------
+        bar : Bar
+            The bar received.
+
+        """
+        self.log.info(repr(bar), LogColor.CYAN)
+
+        # Check if indicators ready
+        if not self.indicators_initialized():
+            self.log.info(
+                f"Waiting for indicators to warm up [{self.cache.bar_count(self.config.bar_type)}]",
+                color=LogColor.BLUE,
+            )
+            return  # Wait for indicators to warm up...
+
+        if bar.is_single_price():
+            self._log.warning("Bar OHLC is single price; implies no market information")
+            return
+
+        # BUY LOGIC
+        if self.fast_ema.value >= self.slow_ema.value:
+            if self.portfolio.is_flat(self.config.instrument_id):
+                self.buy()
+            elif self.portfolio.is_net_short(self.config.instrument_id):
+                self.close_all_positions(self.config.instrument_id)
+                self.buy()
+        # SELL LOGIC
+        elif self.fast_ema.value < self.slow_ema.value:
+            if self.portfolio.is_flat(self.config.instrument_id):
+                self.sell()
+            elif self.portfolio.is_net_long(self.config.instrument_id):
+                self.close_all_positions(self.config.instrument_id)
+                self.sell()
+
+    def buy(self) -> None:
+        """
+        Users simple buy method (example).
+        """
+        order: MarketOrder = self.order_factory.market(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.BUY,
+            quantity=self.create_order_qty(),
+            time_in_force=self.config.order_time_in_force or TimeInForce.GTC,
+        )
+
+        self.submit_order(order)
+
+    def sell(self) -> None:
+        """
+        Users simple sell method (example).
+        """
+        order: MarketOrder = self.order_factory.market(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.SELL,
+            quantity=self.create_order_qty(),
+            time_in_force=self.config.order_time_in_force or TimeInForce.GTC,
+        )
+
+        self.submit_order(order)
+
+    def create_order_qty(self) -> Quantity:
+        if self.config.order_quantity_precision is not None:
+            return Quantity(self.config.trade_size, self.config.order_quantity_precision)
+        else:
+            return self.instrument.make_qty(self.config.trade_size)
+
+    def on_data(self, data: Data) -> None:
+        """
+        Actions to be performed when the strategy is running and receives data.
+
+        Parameters
+        ----------
+        data : Data
+            The data received.
+
+        """
+
+    def on_event(self, event: Event) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an event.
+
+        Parameters
+        ----------
+        event : Event
+            The event received.
+
+        """
+
+    def on_stop(self) -> None:
+        """
+        Actions to be performed when the strategy is stopped.
+        """
+        self.cancel_all_orders(self.config.instrument_id)
+        if self.config.close_positions_on_stop:
+            self.close_all_positions(
+                instrument_id=self.config.instrument_id,
+                reduce_only=self.config.reduce_only_on_stop,
+            )
+
+        if self.config.unsubscribe_data_on_stop:
+            self.unsubscribe_bars(self.config.bar_type)
+
+        if self.config.unsubscribe_data_on_stop and self.config.subscribe_quote_ticks:
+            self.unsubscribe_quote_ticks(self.config.instrument_id)
+
+        if self.config.unsubscribe_data_on_stop and self.config.subscribe_trade_ticks:
+            self.unsubscribe_trade_ticks(self.config.instrument_id)
+
+        # self.unsubscribe_order_book_deltas(self.config.instrument_id)
+        # self.unsubscribe_order_book_at_interval(self.config.instrument_id)
+
+    def on_reset(self) -> None:
+        """
+        Actions to be performed when the strategy is reset.
+        """
+        # Reset indicators here
+        self.fast_ema.reset()
+        self.slow_ema.reset()
+
+    def on_save(self) -> dict[str, bytes]:
+        """
+        Actions to be performed when the strategy is saved.
+
+        Create and return a state dictionary of values to be saved.
+
+        Returns
+        -------
+        dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+        return {}
+
+    def on_load(self, state: dict[str, bytes]) -> None:
+        """
+        Actions to be performed when the strategy is loaded.
+
+        Saved state values will be contained in the give state dictionary.
+
+        Parameters
+        ----------
+        state : dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+
+    def on_dispose(self) -> None:
+        """
+        Actions to be performed when the strategy is disposed.
+
+        Cleanup any resources used by the strategy here.
+
+        """
+
+</document_content>
+</document>
+<document index="2319">
+<source>nautilus_trader/examples/strategies/ema_cross_bracket.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+from datetime import timedelta
+from decimal import Decimal
+
+from nautilus_trader.common.enums import LogColor
+from nautilus_trader.config import PositiveFloat
+from nautilus_trader.config import PositiveInt
+from nautilus_trader.config import StrategyConfig
+from nautilus_trader.core.correctness import PyCondition
+from nautilus_trader.core.data import Data
+from nautilus_trader.core.message import Event
+from nautilus_trader.indicators import AverageTrueRange
+from nautilus_trader.indicators import ExponentialMovingAverage
+from nautilus_trader.model.data import Bar
+from nautilus_trader.model.data import BarType
+from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.enums import OrderType
+from nautilus_trader.model.enums import TimeInForce
+from nautilus_trader.model.enums import TriggerType
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.model.orders.list import OrderList
+from nautilus_trader.trading.strategy import Strategy
+
+
+# *** THIS IS A TEST STRATEGY WITH NO ALPHA ADVANTAGE WHATSOEVER. ***
+# *** IT IS NOT INTENDED TO BE USED TO TRADE LIVE WITH REAL MONEY. ***
+
+
+class EMACrossBracketConfig(StrategyConfig, frozen=True):
+    """
+    Configuration for ``EMACrossBracket`` instances.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+    bar_type : BarType
+        The bar type for the strategy.
+    trade_size : Decimal
+        The position size per trade.
+    atr_period : PositiveInt, default 20
+        The period for the ATR indicator.
+    fast_ema_period : PositiveInt, default 10
+        The fast EMA period.
+    slow_ema_period : PositiveInt, default 20
+        The slow EMA period.
+    bracket_distance_atr : PositiveFloat, default 3.0
+        The SL and TP bracket distance from entry ATR multiple.
+    emulation_trigger : str, default 'NO_TRIGGER'
+        The emulation trigger for submitting emulated orders.
+        If ``None`` then orders will not be emulated.
+
+    """
+
+    instrument_id: InstrumentId
+    bar_type: BarType
+    trade_size: Decimal
+    atr_period: PositiveInt = 20
+    fast_ema_period: PositiveInt = 10
+    slow_ema_period: PositiveInt = 20
+    bracket_distance_atr: PositiveFloat = 3.0
+    emulation_trigger: str = "NO_TRIGGER"
+
+
+class EMACrossBracket(Strategy):
+    """
+    A simple moving average cross example strategy.
+
+    When the fast EMA crosses the slow EMA then enter a position at the market
+    in that direction.
+
+    Cancels all orders and closes all positions on stop.
+
+    Parameters
+    ----------
+    config : EMACrossConfig
+        The configuration for the instance.
+
+    Raises
+    ------
+    ValueError
+        If `config.fast_ema_period` is not less than `config.slow_ema_period`.
+
+    """
+
+    def __init__(self, config: EMACrossBracketConfig) -> None:
+        PyCondition.is_true(
+            config.fast_ema_period < config.slow_ema_period,
+            "{config.fast_ema_period=} must be less than {config.slow_ema_period=}",
+        )
+        super().__init__(config)
+
+        self.instrument: Instrument | None = None  # Initialized in on_start
+
+        # Create the indicators for the strategy
+        self.atr = AverageTrueRange(config.atr_period)
+        self.fast_ema = ExponentialMovingAverage(config.fast_ema_period)
+        self.slow_ema = ExponentialMovingAverage(config.slow_ema_period)
+
+    def on_start(self) -> None:
+        """
+        Actions to be performed on strategy start.
+        """
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
+            self.stop()
+            return
+
+        # Register the indicators for updating
+        self.register_indicator_for_bars(self.config.bar_type, self.atr)
+        self.register_indicator_for_bars(self.config.bar_type, self.fast_ema)
+        self.register_indicator_for_bars(self.config.bar_type, self.slow_ema)
+
+        # Get historical data
+        self.request_bars(
+            self.config.bar_type,
+            start=self._clock.utc_now() - timedelta(days=1),
+        )
+
+        # Subscribe to live data
+        self.subscribe_bars(self.config.bar_type)
+        self.subscribe_quote_ticks(self.config.instrument_id)
+
+    def on_quote_tick(self, tick: QuoteTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a quote tick.
+
+        Parameters
+        ----------
+        tick : QuoteTick
+            The tick received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(tick), LogColor.CYAN)
+
+    def on_bar(self, bar: Bar) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a bar.
+
+        Parameters
+        ----------
+        bar : Bar
+            The bar received.
+
+        """
+        self.log.info(repr(bar), LogColor.CYAN)
+
+        # Check if indicators ready
+        if not self.indicators_initialized():
+            self.log.info(
+                f"Waiting for indicators to warm up [{self.cache.bar_count(self.config.bar_type)}]",
+                color=LogColor.BLUE,
+            )
+            return  # Wait for indicators to warm up...
+
+        if bar.is_single_price():
+            # Implies no market information for this bar
+            return
+
+        # BUY LOGIC
+        if self.fast_ema.value >= self.slow_ema.value:
+            if self.portfolio.is_flat(self.config.instrument_id):
+                self.cancel_all_orders(self.config.instrument_id)
+                self.buy(bar)
+            elif self.portfolio.is_net_short(self.config.instrument_id):
+                self.close_all_positions(self.config.instrument_id)
+                self.cancel_all_orders(self.config.instrument_id)
+                self.buy(bar)
+        # SELL LOGIC
+        elif self.fast_ema.value < self.slow_ema.value:
+            if self.portfolio.is_flat(self.config.instrument_id):
+                self.cancel_all_orders(self.config.instrument_id)
+                self.sell(bar)
+            elif self.portfolio.is_net_long(self.config.instrument_id):
+                self.close_all_positions(self.config.instrument_id)
+                self.cancel_all_orders(self.config.instrument_id)
+                self.sell(bar)
+
+    def buy(self, last_bar: Bar) -> None:
+        """
+        Users bracket buy method (example).
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        bracket_distance: float = self.config.bracket_distance_atr * self.atr.value
+        order_list: OrderList = self.order_factory.bracket(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.BUY,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            time_in_force=TimeInForce.GTD,
+            expire_time=self.clock.utc_now() + timedelta(seconds=30),
+            entry_price=self.instrument.make_price(last_bar.close),  # TODO
+            entry_trigger_price=self.instrument.make_price(last_bar.close),  # TODO
+            sl_trigger_price=self.instrument.make_price(last_bar.close - bracket_distance),
+            tp_price=self.instrument.make_price(last_bar.close + bracket_distance),
+            entry_order_type=OrderType.LIMIT_IF_TOUCHED,
+            emulation_trigger=TriggerType[self.config.emulation_trigger],
+        )
+
+        self.submit_order_list(order_list)
+
+    def sell(self, last_bar: Bar) -> None:
+        """
+        Users bracket sell method (example).
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        bracket_distance: float = self.config.bracket_distance_atr * self.atr.value
+        order_list: OrderList = self.order_factory.bracket(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.SELL,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            time_in_force=TimeInForce.GTD,
+            expire_time=self.clock.utc_now() + timedelta(seconds=30),
+            entry_price=self.instrument.make_price(last_bar.close),  # TODO
+            entry_trigger_price=self.instrument.make_price(last_bar.close),  # TODO
+            sl_trigger_price=self.instrument.make_price(last_bar.close + bracket_distance),
+            tp_price=self.instrument.make_price(last_bar.close - bracket_distance),
+            entry_order_type=OrderType.LIMIT_IF_TOUCHED,
+            emulation_trigger=TriggerType[self.config.emulation_trigger],
+        )
+
+        self.submit_order_list(order_list)
+
+    def on_data(self, data: Data) -> None:
+        """
+        Actions to be performed when the strategy is running and receives data.
+
+        Parameters
+        ----------
+        data : Data
+            The data received.
+
+        """
+
+    def on_event(self, event: Event) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an event.
+
+        Parameters
+        ----------
+        event : Event
+            The event received.
+
+        """
+
+    def on_stop(self) -> None:
+        """
+        Actions to be performed when the strategy is stopped.
+        """
+        self.cancel_all_orders(self.config.instrument_id)
+        self.close_all_positions(self.config.instrument_id)
+
+        # Unsubscribe from data
+        self.unsubscribe_bars(self.config.bar_type)
+        self.unsubscribe_quote_ticks(self.config.instrument_id)
+
+    def on_reset(self) -> None:
+        """
+        Actions to be performed when the strategy is reset.
+        """
+        # Reset indicators here
+        self.fast_ema.reset()
+        self.slow_ema.reset()
+
+    def on_save(self) -> dict[str, bytes]:
+        """
+        Actions to be performed when the strategy is saved.
+
+        Create and return a state dictionary of values to be saved.
+
+        Returns
+        -------
+        dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+        return {}
+
+    def on_load(self, state: dict[str, bytes]) -> None:
+        """
+        Actions to be performed when the strategy is loaded.
+
+        Saved state values will be contained in the give state dictionary.
+
+        Parameters
+        ----------
+        state : dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+
+    def on_dispose(self) -> None:
+        """
+        Actions to be performed when the strategy is disposed.
+
+        Cleanup any resources used by the strategy here.
+
+        """
+
+</document_content>
+</document>
+<document index="2320">
+<source>nautilus_trader/examples/strategies/ema_cross_bracket_algo.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+from datetime import timedelta
+from decimal import Decimal
+from typing import Any
+
+from nautilus_trader.common.enums import LogColor
+from nautilus_trader.config import PositiveFloat
+from nautilus_trader.config import PositiveInt
+from nautilus_trader.config import StrategyConfig
+from nautilus_trader.core.correctness import PyCondition
+from nautilus_trader.core.data import Data
+from nautilus_trader.core.message import Event
+from nautilus_trader.indicators import AverageTrueRange
+from nautilus_trader.indicators import ExponentialMovingAverage
+from nautilus_trader.model.data import Bar
+from nautilus_trader.model.data import BarType
+from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.enums import OrderType
+from nautilus_trader.model.enums import TimeInForce
+from nautilus_trader.model.enums import TriggerType
+from nautilus_trader.model.identifiers import ExecAlgorithmId
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.model.objects import Price
+from nautilus_trader.model.orders import OrderList
+from nautilus_trader.trading.strategy import Strategy
+
+
+# *** THIS IS A TEST STRATEGY WITH NO ALPHA ADVANTAGE WHATSOEVER. ***
+# *** IT IS NOT INTENDED TO BE USED TO TRADE LIVE WITH REAL MONEY. ***
+
+
+class EMACrossBracketAlgoConfig(StrategyConfig, frozen=True):
+    """
+    Configuration for ``EMACrossBracketAlgo`` instances.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+    bar_type : BarType
+        The bar type for the strategy.
+    trade_size : Decimal
+        The position size per trade.
+    atr_period : PositiveInt, default 20
+        The period for the ATR indicator.
+    fast_ema_period : PositiveInt, default 10
+        The fast EMA period.
+    slow_ema_period : PositiveInt, default 20
+        The slow EMA period.
+    bracket_distance_atr : float, default 3.0
+        The SL and TP bracket distance from entry ATR multiple.
+    emulation_trigger : str, default 'NO_TRIGGER'
+        The emulation trigger for submitting emulated orders.
+        If ``None`` then orders will not be emulated.
+    entry_exec_algorithm_id : ExecAlgorithmId, optional
+        The execution algorithm for entry orders.
+    entry_exec_algorithm_params : dict[str, Any], optional
+        The execution algorithm params for entry orders.
+    sl_exec_algorithm_id : ExecAlgorithmId, optional
+        The execution algorithm for stop-loss (SL) orders.
+    sl_exec_algorithm_params : dict[str, Any], optional
+        The execution algorithm params for stop-loss (SL) orders.
+    tp_exec_algorithm_id : ExecAlgorithmId, optional
+        The execution algorithm for take-profit (TP) orders.
+    tp_exec_algorithm_params : dict[str, Any], optional
+        The execution algorithm params for take-profit (TP) orders.
+    close_positions_on_stop : bool, default True
+        If all open positions should be closed on strategy stop.
+
+    """
+
+    instrument_id: InstrumentId
+    bar_type: BarType
+    trade_size: Decimal
+    atr_period: PositiveInt = 20
+    fast_ema_period: PositiveInt = 10
+    slow_ema_period: PositiveInt = 20
+    bracket_distance_atr: PositiveFloat = 3.0
+    emulation_trigger: str = "NO_TRIGGER"
+    entry_exec_algorithm_id: ExecAlgorithmId | None = None
+    entry_exec_algorithm_params: dict[str, Any] | None = None
+    sl_exec_algorithm_id: ExecAlgorithmId | None = None
+    sl_exec_algorithm_params: dict[str, Any] | None = None
+    tp_exec_algorithm_id: ExecAlgorithmId | None = None
+    tp_exec_algorithm_params: dict[str, Any] | None = None
+    close_positions_on_stop: bool = True
+
+
+class EMACrossBracketAlgo(Strategy):
+    """
+    A simple moving average cross example strategy.
+
+    When the fast EMA crosses the slow EMA then enter a position at the market
+    in that direction.
+
+    Cancels all orders and closes all positions on stop.
+
+    Parameters
+    ----------
+    config : EMACrossConfig
+        The configuration for the instance.
+
+    Raises
+    ------
+    ValueError
+        If `config.fast_ema_period` is not less than `config.slow_ema_period`.
+
+    """
+
+    def __init__(self, config: EMACrossBracketAlgoConfig) -> None:
+        PyCondition.is_true(
+            config.fast_ema_period < config.slow_ema_period,
+            "{config.fast_ema_period=} must be less than {config.slow_ema_period=}",
+        )
+        super().__init__(config)
+
+        self.instrument: Instrument | None = None  # Initialized in on_start
+
+        # Create the indicators for the strategy
+        self.atr = AverageTrueRange(config.atr_period)
+        self.fast_ema = ExponentialMovingAverage(config.fast_ema_period)
+        self.slow_ema = ExponentialMovingAverage(config.slow_ema_period)
+
+    def on_start(self) -> None:
+        """
+        Actions to be performed on strategy start.
+        """
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
+            self.stop()
+            return
+
+        # Register the indicators for updating
+        self.register_indicator_for_bars(self.config.bar_type, self.atr)
+        self.register_indicator_for_bars(self.config.bar_type, self.fast_ema)
+        self.register_indicator_for_bars(self.config.bar_type, self.slow_ema)
+
+        # Get historical data
+        self.request_bars(
+            self.config.bar_type,
+            start=self._clock.utc_now() - timedelta(days=1),
+        )
+
+        # Subscribe to live data
+        self.subscribe_bars(self.config.bar_type)
+        self.subscribe_quote_ticks(self.config.instrument_id)
+
+    def on_quote_tick(self, tick: QuoteTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a quote tick.
+
+        Parameters
+        ----------
+        tick : QuoteTick
+            The tick received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(tick), LogColor.CYAN)
+
+    def on_bar(self, bar: Bar) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a bar.
+
+        Parameters
+        ----------
+        bar : Bar
+            The bar received.
+
+        """
+        self.log.info(repr(bar), LogColor.CYAN)
+
+        # Check if indicators ready
+        if not self.indicators_initialized():
+            self.log.info(
+                f"Waiting for indicators to warm up [{self.cache.bar_count(self.config.bar_type)}]",
+                color=LogColor.BLUE,
+            )
+            return  # Wait for indicators to warm up...
+
+        if bar.is_single_price():
+            # Implies no market information for this bar
+            return
+
+        # BUY LOGIC
+        if self.fast_ema.value >= self.slow_ema.value:
+            if self.portfolio.is_flat(self.config.instrument_id):
+                self.cancel_all_orders(self.config.instrument_id)
+                self.buy(bar)
+            elif self.portfolio.is_net_short(self.config.instrument_id):
+                self.close_all_positions(self.config.instrument_id)
+                self.cancel_all_orders(self.config.instrument_id)
+                self.buy(bar)
+        # SELL LOGIC
+        elif self.fast_ema.value < self.slow_ema.value:
+            if self.portfolio.is_flat(self.config.instrument_id):
+                self.cancel_all_orders(self.config.instrument_id)
+                self.sell(bar)
+            elif self.portfolio.is_net_long(self.config.instrument_id):
+                self.close_all_positions(self.config.instrument_id)
+                self.cancel_all_orders(self.config.instrument_id)
+                self.sell(bar)
+
+    def buy(self, last_bar: Bar) -> None:
+        """
+        Users bracket buy method (example).
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        tick_size: Price = self.instrument.price_increment
+        bracket_distance: float = self.config.bracket_distance_atr * self.atr.value
+
+        order_list: OrderList = self.order_factory.bracket(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.BUY,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            time_in_force=TimeInForce.GTD,
+            expire_time=self.clock.utc_now() + timedelta(seconds=30),
+            entry_trigger_price=self.instrument.make_price(last_bar.close + tick_size),
+            sl_trigger_price=self.instrument.make_price(last_bar.close - bracket_distance),
+            tp_price=self.instrument.make_price(last_bar.close + bracket_distance),
+            entry_order_type=OrderType.MARKET_IF_TOUCHED,
+            emulation_trigger=TriggerType[self.config.emulation_trigger],
+            entry_exec_algorithm_id=self.config.entry_exec_algorithm_id,
+            entry_exec_algorithm_params=self.config.entry_exec_algorithm_params,
+            sl_exec_algorithm_id=self.config.sl_exec_algorithm_id,
+            sl_exec_algorithm_params=self.config.sl_exec_algorithm_params,
+            tp_exec_algorithm_id=self.config.tp_exec_algorithm_id,
+            tp_exec_algorithm_params=self.config.tp_exec_algorithm_params,
+        )
+
+        self.submit_order_list(order_list)
+
+    def sell(self, last_bar: Bar) -> None:
+        """
+        Users bracket sell method (example).
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        tick_size: Price = self.instrument.price_increment
+        bracket_distance: float = self.config.bracket_distance_atr * self.atr.value
+
+        order_list: OrderList = self.order_factory.bracket(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.SELL,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            time_in_force=TimeInForce.GTD,
+            expire_time=self.clock.utc_now() + timedelta(seconds=30),
+            entry_trigger_price=self.instrument.make_price(last_bar.low - tick_size),
+            sl_trigger_price=self.instrument.make_price(last_bar.close + bracket_distance),
+            tp_price=self.instrument.make_price(last_bar.close - bracket_distance),
+            entry_order_type=OrderType.MARKET_IF_TOUCHED,
+            emulation_trigger=TriggerType[self.config.emulation_trigger],
+            entry_exec_algorithm_id=self.config.entry_exec_algorithm_id,
+            entry_exec_algorithm_params=self.config.entry_exec_algorithm_params,
+            sl_exec_algorithm_id=self.config.sl_exec_algorithm_id,
+            sl_exec_algorithm_params=self.config.sl_exec_algorithm_params,
+            tp_exec_algorithm_id=self.config.tp_exec_algorithm_id,
+            tp_exec_algorithm_params=self.config.tp_exec_algorithm_params,
+        )
+
+        self.submit_order_list(order_list)
+
+    def on_data(self, data: Data) -> None:
+        """
+        Actions to be performed when the strategy is running and receives data.
+
+        Parameters
+        ----------
+        data : Data
+            The data received.
+
+        """
+
+    def on_event(self, event: Event) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an event.
+
+        Parameters
+        ----------
+        event : Event
+            The event received.
+
+        """
+
+    def on_stop(self) -> None:
+        """
+        Actions to be performed when the strategy is stopped.
+        """
+        self.cancel_all_orders(self.config.instrument_id)
+        self.close_all_positions(self.config.instrument_id)
+
+        # Unsubscribe from data
+        self.unsubscribe_bars(self.config.bar_type)
+        self.unsubscribe_quote_ticks(self.config.instrument_id)
+
+    def on_reset(self) -> None:
+        """
+        Actions to be performed when the strategy is reset.
+        """
+        # Reset indicators here
+        self.fast_ema.reset()
+        self.slow_ema.reset()
+
+    def on_save(self) -> dict[str, bytes]:
+        """
+        Actions to be performed when the strategy is saved.
+
+        Create and return a state dictionary of values to be saved.
+
+        Returns
+        -------
+        dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+        return {}
+
+    def on_load(self, state: dict[str, bytes]) -> None:
+        """
+        Actions to be performed when the strategy is loaded.
+
+        Saved state values will be contained in the give state dictionary.
+
+        Parameters
+        ----------
+        state : dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+
+    def on_dispose(self) -> None:
+        """
+        Actions to be performed when the strategy is disposed.
+
+        Cleanup any resources used by the strategy here.
+
+        """
+
+</document_content>
+</document>
+<document index="2321">
+<source>nautilus_trader/examples/strategies/ema_cross_hedge_mode.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+from decimal import Decimal
+
+import pandas as pd
+
+from nautilus_trader.common.enums import LogColor
+from nautilus_trader.config import PositiveInt
+from nautilus_trader.config import StrategyConfig
+from nautilus_trader.core.correctness import PyCondition
+from nautilus_trader.core.data import Data
+from nautilus_trader.core.message import Event
+from nautilus_trader.indicators import ExponentialMovingAverage
+from nautilus_trader.model.book import OrderBook
+from nautilus_trader.model.data import Bar
+from nautilus_trader.model.data import BarType
+from nautilus_trader.model.data import OrderBookDeltas
+from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model.data import TradeTick
+from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.identifiers import PositionId
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.model.orders import MarketOrder
+from nautilus_trader.trading.strategy import Strategy
+
+
+# *** THIS IS A TEST STRATEGY WITH NO ALPHA ADVANTAGE WHATSOEVER. ***
+# *** IT IS NOT INTENDED TO BE USED TO TRADE LIVE WITH REAL MONEY. ***
+
+
+class EMACrossConfig(StrategyConfig, frozen=True):
+    """
+    Configuration for ``EMACross`` instances.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+    bar_type : BarType
+        The bar type for the strategy.
+    trade_size : Decimal
+        The position size per trade.
+    fast_ema_period : int, default 10
+        The fast EMA period.
+    slow_ema_period : int, default 20
+        The slow EMA period.
+    subscribe_trade_ticks : bool, default True
+        If trades should be subscribed to.
+    subscribe_quote_ticks : bool, default False
+        If quotes should be subscribed to.
+    close_positions_on_stop : bool, default True
+        If all open positions should be closed on strategy stop.
+
+    """
+
+    instrument_id: InstrumentId
+    bar_type: BarType
+    trade_size: Decimal
+    fast_ema_period: PositiveInt = 10
+    slow_ema_period: PositiveInt = 20
+    subscribe_trade_ticks: bool = True
+    subscribe_quote_ticks: bool = False
+    close_positions_on_stop: bool = True
+
+
+class EMACross(Strategy):
+    """
+    A simple moving average cross example strategy.
+
+    When the fast EMA crosses the slow EMA then enter a position at the market
+    in that direction.
+
+    Parameters
+    ----------
+    config : EMACrossConfig
+        The configuration for the instance.
+
+    Raises
+    ------
+    ValueError
+        If `config.fast_ema_period` is not less than `config.slow_ema_period`.
+
+    """
+
+    def __init__(self, config: EMACrossConfig) -> None:
+        PyCondition.is_true(
+            config.fast_ema_period < config.slow_ema_period,
+            "{config.fast_ema_period=} must be less than {config.slow_ema_period=}",
+        )
+        super().__init__(config)
+
+        self.instrument: Instrument = None  # Initialized in on_start
+
+        # Create the indicators for the strategy
+        self.fast_ema = ExponentialMovingAverage(config.fast_ema_period)
+        self.slow_ema = ExponentialMovingAverage(config.slow_ema_period)
+
+    def on_start(self) -> None:
+        """
+        Actions to be performed on strategy start.
+        """
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
+            self.stop()
+            return
+
+        # Register the indicators for updating
+        self.register_indicator_for_bars(self.config.bar_type, self.fast_ema)
+        self.register_indicator_for_bars(self.config.bar_type, self.slow_ema)
+
+        # Get historical data
+        self.request_bars(self.config.bar_type, start=self._clock.utc_now() - pd.Timedelta(days=1))
+        # self.request_quote_ticks(self.config.instrument_id)
+        # self.request_trade_ticks(self.config.instrument_id)
+
+        # Subscribe to live data
+        self.subscribe_bars(self.config.bar_type)
+
+        if self.config.subscribe_quote_ticks:
+            self.subscribe_quote_ticks(self.config.instrument_id)
+        if self.config.subscribe_trade_ticks:
+            self.subscribe_trade_ticks(self.config.instrument_id)
+
+        # self.subscribe_order_book_deltas(self.config.instrument_id, depth=20)  # For debugging
+        # self.subscribe_order_book_at_interval(self.config.instrument_id, depth=20)  # For debugging
+
+    def on_instrument(self, instrument: Instrument) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an instrument.
+
+        Parameters
+        ----------
+        instrument : Instrument
+            The instrument received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(instrument), LogColor.CYAN)
+
+    def on_order_book_deltas(self, deltas: OrderBookDeltas) -> None:
+        """
+        Actions to be performed when the strategy is running and receives order book
+        deltas.
+
+        Parameters
+        ----------
+        deltas : OrderBookDeltas
+            The order book deltas received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(deltas), LogColor.CYAN)
+
+    def on_order_book(self, order_book: OrderBook) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an order book.
+
+        Parameters
+        ----------
+        order_book : OrderBook
+            The order book received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(order_book), LogColor.CYAN)
+
+    def on_quote_tick(self, tick: QuoteTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a quote tick.
+
+        Parameters
+        ----------
+        tick : QuoteTick
+            The tick received.
+
+        """
+        # For debugging (must add a subscription)
+        self.log.info(repr(tick), LogColor.CYAN)
+
+    def on_trade_tick(self, tick: TradeTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a trade tick.
+
+        Parameters
+        ----------
+        tick : TradeTick
+            The tick received.
+
+        """
+        # For debugging (must add a subscription)
+        self.log.info(repr(tick), LogColor.CYAN)
+
+    def on_bar(self, bar: Bar) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a bar.
+
+        Parameters
+        ----------
+        bar : Bar
+            The bar received.
+
+        """
+        self.log.info(repr(bar), LogColor.CYAN)
+
+        # Check if indicators ready
+        if not self.indicators_initialized():
+            self.log.info(
+                f"Waiting for indicators to warm up [{self.cache.bar_count(self.config.bar_type)}]",
+                color=LogColor.BLUE,
+            )
+            return  # Wait for indicators to warm up...
+
+        if bar.is_single_price():
+            # Implies no market information for this bar
+            return
+
+        # BUY LOGIC
+        if self.fast_ema.value >= self.slow_ema.value:
+            if self.portfolio.is_flat(self.config.instrument_id):
+                self.buy()
+            elif self.portfolio.is_net_short(self.config.instrument_id):
+                self.close_all_positions(self.config.instrument_id)
+                self.buy()
+        # SELL LOGIC
+        elif self.fast_ema.value < self.slow_ema.value:
+            if self.portfolio.is_flat(self.config.instrument_id):
+                self.sell()
+            elif self.portfolio.is_net_long(self.config.instrument_id):
+                self.close_all_positions(self.config.instrument_id)
+                self.sell()
+
+    def buy(self) -> None:
+        """
+        Users simple buy method (example).
+        """
+        order: MarketOrder = self.order_factory.market(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.BUY,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            # time_in_force=TimeInForce.FOK,
+        )
+
+        # LONG suffix is recognized as a long position by Binance adapter.
+        position_id = PositionId(f"{self.config.instrument_id}-LONG")
+        self.submit_order(order, position_id)
+
+    def sell(self) -> None:
+        """
+        Users simple sell method (example).
+        """
+        order: MarketOrder = self.order_factory.market(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.SELL,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            # time_in_force=TimeInForce.FOK,
+        )
+        # SHORT suffix is recognized as a short position by Binance adapter.
+        position_id = PositionId(f"{self.config.instrument_id}-SHORT")
+        self.submit_order(order, position_id)
+
+    def on_data(self, data: Data) -> None:
+        """
+        Actions to be performed when the strategy is running and receives data.
+
+        Parameters
+        ----------
+        data : Data
+            The data received.
+
+        """
+
+    def on_event(self, event: Event) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an event.
+
+        Parameters
+        ----------
+        event : Event
+            The event received.
+
+        """
+
+    def on_stop(self) -> None:
+        """
+        Actions to be performed when the strategy is stopped.
+        """
+        self.cancel_all_orders(self.config.instrument_id)
+        if self.config.close_positions_on_stop:
+            self.close_all_positions(self.config.instrument_id)
+
+        # Unsubscribe from data
+        self.unsubscribe_bars(self.config.bar_type)
+        # self.unsubscribe_quote_ticks(self.config.instrument_id)
+        self.unsubscribe_trade_ticks(self.config.instrument_id)
+        # self.unsubscribe_order_book_deltas(self.config.instrument_id)
+        # self.unsubscribe_order_book_at_interval(self.config.instrument_id)
+
+    def on_reset(self) -> None:
+        """
+        Actions to be performed when the strategy is reset.
+        """
+        # Reset indicators here
+        self.fast_ema.reset()
+        self.slow_ema.reset()
+
+    def on_save(self) -> dict[str, bytes]:
+        """
+        Actions to be performed when the strategy is saved.
+
+        Create and return a state dictionary of values to be saved.
+
+        Returns
+        -------
+        dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+        return {}
+
+    def on_load(self, state: dict[str, bytes]) -> None:
+        """
+        Actions to be performed when the strategy is loaded.
+
+        Saved state values will be contained in the give state dictionary.
+
+        Parameters
+        ----------
+        state : dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+
+    def on_dispose(self) -> None:
+        """
+        Actions to be performed when the strategy is disposed.
+
+        Cleanup any resources used by the strategy here.
+
+        """
+
+</document_content>
+</document>
+<document index="2322">
+<source>nautilus_trader/examples/strategies/ema_cross_long_only.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+from decimal import Decimal
+
+import pandas as pd
+
+from nautilus_trader.common.enums import LogColor
+from nautilus_trader.config import PositiveInt
+from nautilus_trader.config import StrategyConfig
+from nautilus_trader.core.correctness import PyCondition
+from nautilus_trader.core.data import Data
+from nautilus_trader.core.message import Event
+from nautilus_trader.indicators import ExponentialMovingAverage
+from nautilus_trader.model.book import OrderBook
+from nautilus_trader.model.data import Bar
+from nautilus_trader.model.data import BarType
+from nautilus_trader.model.data import OrderBookDeltas
+from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model.data import TradeTick
+from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.enums import TimeInForce
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.model.orders import MarketOrder
+from nautilus_trader.trading.strategy import Strategy
+
+
+# *** THIS IS A TEST STRATEGY WITH NO ALPHA ADVANTAGE WHATSOEVER. ***
+# *** IT IS NOT INTENDED TO BE USED TO TRADE LIVE WITH REAL MONEY. ***
+
+
+class EMACrossLongOnlyConfig(StrategyConfig, frozen=True):
+    """
+    Configuration for ``EMACrossLongOnly`` instances.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+    bar_type : BarType
+        The bar type for the strategy.
+    trade_size : Decimal
+        The position size per trade.
+    fast_ema_period : int, default 10
+        The fast EMA period.
+    slow_ema_period : int, default 20
+        The slow EMA period.
+    request_historical_bars : bool, default True
+        If historical bars should be requested on start.
+    close_positions_on_stop : bool, default True
+        If all open positions should be closed on strategy stop.
+
+    """
+
+    instrument_id: InstrumentId
+    bar_type: BarType
+    trade_size: Decimal
+    fast_ema_period: PositiveInt = 10
+    slow_ema_period: PositiveInt = 20
+    request_historical_bars: bool = True
+    close_positions_on_stop: bool = True
+
+
+class EMACrossLongOnly(Strategy):
+    """
+    A simple moving average cross LONG ONLY example strategy.
+
+    This strategy is suitable for trading equities on a CASH account.
+
+    When the fast EMA crosses the slow EMA then enter either a LONG position
+    at the market for BUY, or flatten any existing position for SELL.
+
+    Parameters
+    ----------
+    config : EMACrossConfig
+        The configuration for the instance.
+
+    Raises
+    ------
+    ValueError
+        If `config.fast_ema_period` is not less than `config.slow_ema_period`.
+
+    """
+
+    def __init__(self, config: EMACrossLongOnlyConfig) -> None:
+        PyCondition.is_true(
+            config.fast_ema_period < config.slow_ema_period,
+            "{config.fast_ema_period=} must be less than {config.slow_ema_period=}",
+        )
+        super().__init__(config)
+
+        self.instrument: Instrument = None  # Initialized in on_start
+
+        # Create the indicators for the strategy
+        self.fast_ema = ExponentialMovingAverage(config.fast_ema_period)
+        self.slow_ema = ExponentialMovingAverage(config.slow_ema_period)
+
+    def on_start(self) -> None:
+        """
+        Actions to be performed on strategy start.
+        """
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
+            self.stop()
+            return
+
+        # Register the indicators for updating
+        self.register_indicator_for_bars(self.config.bar_type, self.fast_ema)
+        self.register_indicator_for_bars(self.config.bar_type, self.slow_ema)
+
+        # Get historical data
+        if self.config.request_historical_bars:
+            self.request_bars(
+                self.config.bar_type,
+                start=self._clock.utc_now() - pd.Timedelta(days=1),
+            )
+        # self.request_quote_ticks(self.config.instrument_id)
+        # self.request_trade_ticks(self.config.instrument_id)
+
+        # Subscribe to live data
+        self.subscribe_bars(self.config.bar_type)
+        # self.subscribe_quote_ticks(self.config.instrument_id)
+        self.subscribe_trade_ticks(self.config.instrument_id)
+        # self.subscribe_order_book_deltas(self.config.instrument_id, depth=20)  # For debugging
+        # self.subscribe_order_book_at_interval(self.config.instrument_id, depth=20)  # For debugging
+
+    def on_instrument(self, instrument: Instrument) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an instrument.
+
+        Parameters
+        ----------
+        instrument : Instrument
+            The instrument received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(instrument), LogColor.CYAN)
+
+    def on_order_book_deltas(self, deltas: OrderBookDeltas) -> None:
+        """
+        Actions to be performed when the strategy is running and receives order book
+        deltas.
+
+        Parameters
+        ----------
+        deltas : OrderBookDeltas
+            The order book deltas received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(deltas), LogColor.CYAN)
+
+    def on_order_book(self, order_book: OrderBook) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an order book.
+
+        Parameters
+        ----------
+        order_book : OrderBook
+            The order book received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(order_book), LogColor.CYAN)
+
+    def on_quote_tick(self, tick: QuoteTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a quote tick.
+
+        Parameters
+        ----------
+        tick : QuoteTick
+            The tick received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(tick), LogColor.CYAN)
+
+    def on_trade_tick(self, tick: TradeTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a trade tick.
+
+        Parameters
+        ----------
+        tick : TradeTick
+            The tick received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(tick), LogColor.CYAN)
+
+    def on_bar(self, bar: Bar) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a bar.
+
+        Parameters
+        ----------
+        bar : Bar
+            The bar received.
+
+        """
+        self.log.info(repr(bar), LogColor.CYAN)
+
+        # Check if indicators ready
+        if not self.indicators_initialized():
+            self.log.info(
+                f"Waiting for indicators to warm up [{self.cache.bar_count(self.config.bar_type)}]",
+                color=LogColor.BLUE,
+            )
+            return  # Wait for indicators to warm up...
+
+        if bar.is_single_price():
+            # Implies no market information for this bar
+            return
+
+        # BUY LOGIC
+        if self.fast_ema.value >= self.slow_ema.value:
+            if self.portfolio.is_flat(self.config.instrument_id):
+                self.buy()
+        # SELL LOGIC
+        elif (
+            self.fast_ema.value < self.slow_ema.value
+            and self.portfolio.is_net_long(self.config.instrument_id)
+        ):
+            self.close_all_positions(self.config.instrument_id)
+
+    def buy(self) -> None:
+        """
+        Users simple buy method (example).
+        """
+        order: MarketOrder = self.order_factory.market(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.BUY,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            time_in_force=TimeInForce.IOC,
+        )
+
+        self.submit_order(order)
+
+    def on_data(self, data: Data) -> None:
+        """
+        Actions to be performed when the strategy is running and receives data.
+
+        Parameters
+        ----------
+        data : Data
+            The data received.
+
+        """
+
+    def on_event(self, event: Event) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an event.
+
+        Parameters
+        ----------
+        event : Event
+            The event received.
+
+        """
+
+    def on_stop(self) -> None:
+        """
+        Actions to be performed when the strategy is stopped.
+        """
+        self.cancel_all_orders(self.config.instrument_id)
+        if self.config.close_positions_on_stop:
+            self.close_all_positions(self.config.instrument_id)
+
+        # Unsubscribe from data
+        self.unsubscribe_bars(self.config.bar_type)
+        # self.unsubscribe_quote_ticks(self.config.instrument_id)
+        self.unsubscribe_trade_ticks(self.config.instrument_id)
+        # self.unsubscribe_order_book_deltas(self.config.instrument_id)
+        # self.unsubscribe_order_book_at_interval(self.config.instrument_id)
+
+    def on_reset(self) -> None:
+        """
+        Actions to be performed when the strategy is reset.
+        """
+        # Reset indicators here
+        self.fast_ema.reset()
+        self.slow_ema.reset()
+
+    def on_save(self) -> dict[str, bytes]:
+        """
+        Actions to be performed when the strategy is saved.
+
+        Create and return a state dictionary of values to be saved.
+
+        Returns
+        -------
+        dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+        return {}
+
+    def on_load(self, state: dict[str, bytes]) -> None:
+        """
+        Actions to be performed when the strategy is loaded.
+
+        Saved state values will be contained in the give state dictionary.
+
+        Parameters
+        ----------
+        state : dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+
+    def on_dispose(self) -> None:
+        """
+        Actions to be performed when the strategy is disposed.
+
+        Cleanup any resources used by the strategy here.
+
+        """
+
+</document_content>
+</document>
+<document index="2323">
+<source>nautilus_trader/examples/strategies/ema_cross_stop_entry.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+from decimal import Decimal
+
+import pandas as pd
+
+from nautilus_trader.common.enums import LogColor
+from nautilus_trader.config import PositiveFloat
+from nautilus_trader.config import PositiveInt
+from nautilus_trader.config import StrategyConfig
+from nautilus_trader.core.correctness import PyCondition
+from nautilus_trader.core.data import Data
+from nautilus_trader.core.message import Event
+from nautilus_trader.indicators import AverageTrueRange
+from nautilus_trader.indicators import ExponentialMovingAverage
+from nautilus_trader.model.book import OrderBook
+from nautilus_trader.model.data import Bar
+from nautilus_trader.model.data import BarType
+from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model.data import TradeTick
+from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.enums import TimeInForce
+from nautilus_trader.model.enums import TrailingOffsetType
+from nautilus_trader.model.enums import TriggerType
+from nautilus_trader.model.events import OrderFilled
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.model.objects import Price
+from nautilus_trader.model.orders import MarketIfTouchedOrder
+from nautilus_trader.model.orders import TrailingStopMarketOrder
+from nautilus_trader.trading.strategy import Strategy
+
+
+# *** THIS IS A TEST STRATEGY WITH NO ALPHA ADVANTAGE WHATSOEVER. ***
+# *** IT IS NOT INTENDED TO BE USED TO TRADE LIVE WITH REAL MONEY. ***
+
+
+class EMACrossStopEntryConfig(StrategyConfig, frozen=True):
+    """
+    Configuration for ``EMACrossStopEntry`` instances.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+    bar_type : BarType
+        The bar type for the strategy.
+    atr_period : PositiveInt
+        The period for the ATR indicator.
+    trailing_atr_multiple : PositiveFloat
+        The ATR multiple for the trailing stop.
+    trailing_offset_type : str
+        The trailing offset type (interpreted as `TrailingOffsetType`).
+    trailing_offset : Decimal
+        The trailing offset amount.
+    trigger_type : str
+        The trailing stop trigger type (interpreted as `TriggerType`).
+    trade_size : Decimal
+        The position size per trade.
+    fast_ema_period : PositiveInt, default 10
+        The fast EMA period.
+    slow_ema_period : PositiveInt, default 20
+        The slow EMA period.
+    emulation_trigger : str, default 'NO_TRIGGER'
+        The emulation trigger for submitting emulated orders.
+        If 'NONE' then orders will not be emulated.
+
+    """
+
+    instrument_id: InstrumentId
+    bar_type: BarType
+    atr_period: PositiveInt
+    trailing_atr_multiple: PositiveFloat
+    trailing_offset_type: str
+    trailing_offset: Decimal
+    trigger_type: str
+    trade_size: Decimal
+    fast_ema_period: PositiveInt = 10
+    slow_ema_period: PositiveInt = 20
+    emulation_trigger: str = "NO_TRIGGER"
+
+
+class EMACrossStopEntry(Strategy):
+    """
+    A simple moving average cross example strategy with a `MARKET_IF_TOUCHED` entry and
+    `TRAILING_STOP_MARKET` stop.
+
+    When the fast EMA crosses the slow EMA then submits a `MARKET_IF_TOUCHED` order
+    one tick above the current bar for BUY, or one tick below the current bar
+    for SELL.
+
+    If the entry order is filled then a `TRAILING_STOP_MARKET` at a specified
+    ATR distance is submitted and managed.
+
+    Cancels all orders and closes all positions on stop.
+
+    Parameters
+    ----------
+    config : EMACrossStopEntryConfig
+        The configuration for the instance.
+
+    Raises
+    ------
+    ValueError
+        If `config.fast_ema_period` is not less than `config.slow_ema_period`.
+
+    """
+
+    def __init__(self, config: EMACrossStopEntryConfig) -> None:
+        PyCondition.is_true(
+            config.fast_ema_period < config.slow_ema_period,
+            "{config.fast_ema_period=} must be less than {config.slow_ema_period=}",
+        )
+        super().__init__(config)
+
+        # Create the indicators for the strategy
+        self.fast_ema = ExponentialMovingAverage(config.fast_ema_period)
+        self.slow_ema = ExponentialMovingAverage(config.slow_ema_period)
+        self.atr = AverageTrueRange(config.atr_period)
+
+        # Initialized in `on_start()`
+        self.instrument: Instrument | None = None
+        self.tick_size: Price | None = None
+
+        # Users order management variables
+        self.entry = None
+        self.trailing_stop = None
+
+    def on_start(self) -> None:
+        """
+        Actions to be performed on strategy start.
+        """
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
+            self.stop()
+            return
+
+        self.tick_size = self.instrument.price_increment
+
+        # Register the indicators for updating
+        self.register_indicator_for_bars(self.config.bar_type, self.fast_ema)
+        self.register_indicator_for_bars(self.config.bar_type, self.slow_ema)
+        self.register_indicator_for_bars(self.config.bar_type, self.atr)
+
+        # Get historical data
+        self.request_bars(
+            self.config.bar_type,
+            start=self._clock.utc_now() - pd.Timedelta(days=1),
+        )
+
+        # Subscribe to live data
+        self.subscribe_bars(self.config.bar_type)
+        self.subscribe_quote_ticks(self.config.instrument_id)
+        self.subscribe_trade_ticks(self.config.instrument_id)
+
+    def on_instrument(self, instrument: Instrument) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an instrument.
+
+        Parameters
+        ----------
+        instrument : Instrument
+            The instrument received.
+
+        """
+
+    def on_order_book(self, order_book: OrderBook) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an order book.
+
+        Parameters
+        ----------
+        order_book : OrderBook
+            The order book received.
+
+        """
+        # self.log.info(f"Received {order_book}")  # For debugging (must add a subscription)
+
+    def on_quote_tick(self, tick: QuoteTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a quote tick.
+
+        Parameters
+        ----------
+        tick : QuoteTick
+            The tick received.
+
+        """
+
+    def on_trade_tick(self, tick: TradeTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a trade tick.
+
+        Parameters
+        ----------
+        tick : TradeTick
+            The tick received.
+
+        """
+
+    def on_bar(self, bar: Bar) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a bar.
+
+        Parameters
+        ----------
+        bar : Bar
+            The bar received.
+
+        """
+        self.log.info(f"Received {bar!r}")
+
+        # Check if indicators ready
+        if not self.indicators_initialized():
+            self.log.info(
+                f"Waiting for indicators to warm up [{self.cache.bar_count(self.config.bar_type)}]",
+                color=LogColor.BLUE,
+            )
+            return  # Wait for indicators to warm up...
+
+        if self.portfolio.is_flat(self.config.instrument_id):
+            if self.entry is not None:
+                self.cancel_order(self.entry)
+
+            # BUY LOGIC
+            if self.fast_ema.value >= self.slow_ema.value:
+                self.entry_buy(bar)
+            # SELL LOGIC
+            else:  # fast_ema.value < self.slow_ema.value
+                self.entry_sell(bar)
+
+    def entry_buy(self, last_bar: Bar) -> None:
+        """
+        Users simple buy entry method (example).
+
+        Parameters
+        ----------
+        last_bar : Bar
+            The last bar received.
+
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        if not self.tick_size:
+            self.log.error("No tick size loaded")
+            return
+
+        order: MarketIfTouchedOrder = self.order_factory.market_if_touched(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.BUY,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            time_in_force=TimeInForce.IOC,
+            trigger_price=self.instrument.make_price(last_bar.high + (self.tick_size * 2)),
+            emulation_trigger=TriggerType[self.config.emulation_trigger],
+        )
+        # TODO: Uncomment below order for development
+        # order: LimitIfTouchedOrder = self.order_factory.limit_if_touched(
+        #     instrument_id=self.config.instrument_id,
+        #     order_side=OrderSide.BUY,
+        #     quantity=self.instrument.make_qty(self.config.trade_size),
+        #     time_in_force=TimeInForce.IOC,
+        #     price=self.instrument.make_price(last_bar.low - (self.tick_size * 2)),
+        #     trigger_price=self.instrument.make_price(last_bar.high + (self.tick_size * 2)),
+        # )
+
+        self.entry = order
+        self.submit_order(order)
+
+    def entry_sell(self, last_bar: Bar) -> None:
+        """
+        Users simple sell entry method (example).
+
+        Parameters
+        ----------
+        last_bar : Bar
+            The last bar received.
+
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        if not self.tick_size:
+            self.log.error("No tick size loaded")
+            return
+
+        order: MarketIfTouchedOrder = self.order_factory.market_if_touched(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.SELL,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            time_in_force=TimeInForce.IOC,
+            trigger_price=self.instrument.make_price(last_bar.low - (self.tick_size * 2)),
+            emulation_trigger=TriggerType[self.config.emulation_trigger],
+        )
+        # TODO: Uncomment below order for development
+        # order: LimitIfTouchedOrder = self.order_factory.limit_if_touched(
+        #     instrument_id=self.config.instrument_id,
+        #     order_side=OrderSide.SELL,
+        #     quantity=self.instrument.make_qty(self.config.trade_size),
+        #     time_in_force=TimeInForce.IOC,
+        #     price=self.instrument.make_price(last_bar.low - (self.tick_size * 2)),
+        #     trigger_price=self.instrument.make_price(last_bar.low - (self.tick_size * 2)),
+        # )
+
+        self.entry = order
+        self.submit_order(order)
+
+    def trailing_stop_buy(self) -> None:
+        """
+        Users simple trailing stop BUY for (``SHORT`` positions).
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        offset = self.atr.value * self.config.trailing_atr_multiple
+        order: TrailingStopMarketOrder = self.order_factory.trailing_stop_market(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.BUY,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            trailing_offset=Decimal(f"{offset:.{self.instrument.price_precision}f}"),
+            trailing_offset_type=TrailingOffsetType[self.config.trailing_offset_type],
+            trigger_type=TriggerType[self.config.trigger_type],
+            reduce_only=True,
+            emulation_trigger=TriggerType[self.config.emulation_trigger],
+        )
+
+        self.trailing_stop = order
+        self.submit_order(order)
+
+    def trailing_stop_sell(self) -> None:
+        """
+        Users simple trailing stop SELL for (LONG positions).
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        offset = self.atr.value * self.config.trailing_atr_multiple
+        order: TrailingStopMarketOrder = self.order_factory.trailing_stop_market(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.SELL,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            trailing_offset=Decimal(f"{offset:.{self.instrument.price_precision}f}"),
+            trailing_offset_type=TrailingOffsetType[self.config.trailing_offset_type],
+            trigger_type=TriggerType[self.config.trigger_type],
+            reduce_only=True,
+            emulation_trigger=TriggerType[self.config.emulation_trigger],
+        )
+
+        self.trailing_stop = order
+        self.submit_order(order)
+
+    def on_data(self, data: Data) -> None:
+        """
+        Actions to be performed when the strategy is running and receives data.
+
+        Parameters
+        ----------
+        data : Data
+            The data received.
+
+        """
+
+    def on_event(self, event: Event) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an event.
+
+        Parameters
+        ----------
+        event : Event
+            The event received.
+
+        """
+        if isinstance(event, OrderFilled):
+            if self.entry and event.client_order_id == self.entry.client_order_id:
+                if event.order_side == OrderSide.BUY:
+                    self.trailing_stop_sell()
+                elif event.order_side == OrderSide.SELL:
+                    self.trailing_stop_buy()
+            if self.trailing_stop and event.client_order_id == self.trailing_stop.client_order_id:
+                self.trailing_stop = None
+
+    def on_stop(self) -> None:
+        """
+        Actions to be performed when the strategy is stopped.
+        """
+        self.cancel_all_orders(self.config.instrument_id)
+        self.close_all_positions(self.config.instrument_id)
+
+        # Unsubscribe from data
+        self.unsubscribe_bars(self.config.bar_type)
+        self.unsubscribe_quote_ticks(self.config.instrument_id)
+        self.unsubscribe_trade_ticks(self.config.instrument_id)
+
+    def on_reset(self) -> None:
+        """
+        Actions to be performed when the strategy is reset.
+        """
+        # Reset indicators here
+        self.fast_ema.reset()
+        self.slow_ema.reset()
+        self.atr.reset()
+
+    def on_save(self) -> dict[str, bytes]:
+        """
+        Actions to be performed when the strategy is saved.
+
+        Create and return a state dictionary of values to be saved.
+
+        Returns
+        -------
+        dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+        return {}
+
+    def on_load(self, state: dict[str, bytes]) -> None:
+        """
+        Actions to be performed when the strategy is loaded.
+
+        Saved state values will be contained in the give state dictionary.
+
+        Parameters
+        ----------
+        state : dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+
+    def on_dispose(self) -> None:
+        """
+        Actions to be performed when the strategy is disposed.
+
+        Cleanup any resources used by the strategy here.
+
+        """
+
+</document_content>
+</document>
+<document index="2324">
+<source>nautilus_trader/examples/strategies/ema_cross_trailing_stop.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+from decimal import Decimal
+
+import pandas as pd
+
+from nautilus_trader.common.enums import LogColor
+from nautilus_trader.config import PositiveFloat
+from nautilus_trader.config import PositiveInt
+from nautilus_trader.config import StrategyConfig
+from nautilus_trader.core.correctness import PyCondition
+from nautilus_trader.core.data import Data
+from nautilus_trader.core.message import Event
+from nautilus_trader.indicators import AverageTrueRange
+from nautilus_trader.indicators import ExponentialMovingAverage
+from nautilus_trader.model.book import OrderBook
+from nautilus_trader.model.data import Bar
+from nautilus_trader.model.data import BarType
+from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model.data import TradeTick
+from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.enums import TrailingOffsetType
+from nautilus_trader.model.enums import TriggerType
+from nautilus_trader.model.events import OrderFilled
+from nautilus_trader.model.events import PositionChanged
+from nautilus_trader.model.events import PositionClosed
+from nautilus_trader.model.events import PositionOpened
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.model.orders import MarketOrder
+from nautilus_trader.model.orders import TrailingStopMarketOrder
+from nautilus_trader.trading.strategy import Strategy
+
+
+# *** THIS IS A TEST STRATEGY WITH NO ALPHA ADVANTAGE WHATSOEVER. ***
+# *** IT IS NOT INTENDED TO BE USED TO TRADE LIVE WITH REAL MONEY. ***
+
+
+class EMACrossTrailingStopConfig(StrategyConfig, frozen=True):
+    """
+    Configuration for ``EMACrossTrailingStop`` instances.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+    bar_type : BarType
+        The bar type for the strategy.
+    atr_period : PositiveInt
+        The period for the ATR indicator.
+    trailing_atr_multiple : PositiveFloat
+        The ATR multiple for the trailing stop.
+    trailing_offset_type : str
+        The trailing offset type (interpreted as `TrailingOffsetType`).
+    trigger_type : str
+        The trailing stop trigger type (interpreted as `TriggerType`).
+    trade_size : Decimal
+        The position size per trade.
+    fast_ema_period : PositiveInt, default 10
+        The fast EMA period.
+    slow_ema_period : PositiveInt, default 20
+        The slow EMA period.
+    emulation_trigger : str, default 'NO_TRIGGER'
+        The emulation trigger for submitting emulated orders.
+        If 'NONE' then orders will not be emulated.
+
+    """
+
+    instrument_id: InstrumentId
+    bar_type: BarType
+    atr_period: PositiveInt
+    trailing_atr_multiple: PositiveFloat
+    trailing_offset_type: str
+    trigger_type: str
+    trade_size: Decimal
+    fast_ema_period: PositiveInt = 10
+    slow_ema_period: PositiveInt = 20
+    emulation_trigger: str = "NO_TRIGGER"
+
+
+class EMACrossTrailingStop(Strategy):
+    """
+    A simple moving average cross example strategy with a stop-market entry and trailing
+    stop.
+
+    When the fast EMA crosses the slow EMA then submits a stop-market order one
+    tick above the current bar for BUY, or one tick below the current bar
+    for SELL.
+
+    If the entry order is filled then a trailing stop at a specified ATR
+    distance is submitted and managed.
+
+    Cancels all orders and closes all positions on stop.
+
+    Parameters
+    ----------
+    config : EMACrossTrailingStopConfig
+        The configuration for the instance.
+
+    Raises
+    ------
+    ValueError
+        If `config.fast_ema_period` is not less than `config.slow_ema_period`.
+
+    """
+
+    def __init__(self, config: EMACrossTrailingStopConfig) -> None:
+        PyCondition.is_true(
+            config.fast_ema_period < config.slow_ema_period,
+            "{config.fast_ema_period=} must be less than {config.slow_ema_period=}",
+        )
+        super().__init__(config)
+
+        # Initialized in on_start
+        self.instrument: Instrument | None = None
+        self.tick_size = None
+
+        # Create the indicators for the strategy
+        self.fast_ema = ExponentialMovingAverage(config.fast_ema_period)
+        self.slow_ema = ExponentialMovingAverage(config.slow_ema_period)
+        self.atr = AverageTrueRange(config.atr_period)
+
+        # Users order management variables
+        self.entry = None
+        self.trailing_stop = None
+        self.position_id = None
+
+    def on_start(self) -> None:
+        """
+        Actions to be performed on strategy start.
+        """
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
+            self.stop()
+            return
+
+        self.tick_size = self.instrument.price_increment
+
+        # Register the indicators for updating
+        self.register_indicator_for_bars(self.config.bar_type, self.fast_ema)
+        self.register_indicator_for_bars(self.config.bar_type, self.slow_ema)
+        self.register_indicator_for_bars(self.config.bar_type, self.atr)
+
+        # Get historical data
+        self.request_bars(
+            self.config.bar_type,
+            start=self._clock.utc_now() - pd.Timedelta(days=1),
+        )
+
+        # Subscribe to live data
+        self.subscribe_quote_ticks(self.config.instrument_id)
+        self.subscribe_bars(self.config.bar_type)
+
+    def on_stop(self) -> None:
+        """
+        Actions to be performed when the strategy is stopped.
+        """
+        self.cancel_all_orders(self.config.instrument_id)
+        self.close_all_positions(self.config.instrument_id)
+
+        # Unsubscribe from data
+        self.unsubscribe_quote_ticks(self.config.instrument_id)
+        self.unsubscribe_bars(self.config.bar_type)
+
+    def on_reset(self) -> None:
+        """
+        Actions to be performed when the strategy is reset.
+        """
+        # Reset indicators here
+        self.fast_ema.reset()
+        self.slow_ema.reset()
+        self.atr.reset()
+
+    def on_instrument(self, instrument: Instrument) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an instrument.
+
+        Parameters
+        ----------
+        instrument : Instrument
+            The instrument received.
+
+        """
+
+    def on_order_book(self, order_book: OrderBook) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an order book.
+
+        Parameters
+        ----------
+        order_book : OrderBook
+            The order book received.
+
+        """
+        # self.log.info(f"Received {order_book}")  # For debugging (must add a subscription)
+
+    def on_quote_tick(self, tick: QuoteTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a quote tick.
+
+        Parameters
+        ----------
+        tick : QuoteTick
+            The tick received.
+
+        """
+
+    def on_trade_tick(self, tick: TradeTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a trade tick.
+
+        Parameters
+        ----------
+        tick : TradeTick
+            The tick received.
+
+        """
+
+    def on_bar(self, bar: Bar) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a bar.
+
+        Parameters
+        ----------
+        bar : Bar
+            The bar received.
+
+        """
+        # self.log.info(f"Received {bar!r}")
+
+        # Check if indicators ready
+        if not self.indicators_initialized():
+            self.log.info(
+                f"Waiting for indicators to warm up [{self.cache.bar_count(self.config.bar_type)}]",
+                color=LogColor.BLUE,
+            )
+            return  # Wait for indicators to warm up...
+
+        if self.portfolio.is_flat(self.config.instrument_id):
+            # BUY LOGIC
+            if self.fast_ema.value >= self.slow_ema.value:
+                self.entry_buy()
+            # SELL LOGIC
+            else:  # fast_ema.value < self.slow_ema.value
+                self.entry_sell()
+
+    def entry_buy(self) -> None:
+        """
+        Users simple buy entry method (example).
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        order: MarketOrder = self.order_factory.market(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.BUY,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+        )
+
+        self.entry = order
+        self.submit_order(order)
+
+    def entry_sell(self) -> None:
+        """
+        Users simple sell entry method (example).
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        order: MarketOrder = self.order_factory.market(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.SELL,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+        )
+
+        self.entry = order
+        self.submit_order(order)
+
+    def trailing_stop_buy(self) -> None:
+        """
+        Users simple trailing stop BUY for (``SHORT`` positions).
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        last_quote = self.cache.quote_tick(self.config.instrument_id)
+        if not last_quote:
+            self.log.warning("Cannot submit order: no quotes yet")
+            return
+
+        offset = self.atr.value * self.config.trailing_atr_multiple
+        order: TrailingStopMarketOrder = self.order_factory.trailing_stop_market(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.BUY,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            # limit_offset=Decimal(f"{offset / 2:.{self.instrument.price_precision}f}"),
+            # price=self.instrument.make_price(last_quote.ask_price.as_double() + offset),
+            trailing_offset=Decimal(f"{offset:.{self.instrument.price_precision}f}"),
+            trailing_offset_type=TrailingOffsetType[self.config.trailing_offset_type],
+            trigger_type=TriggerType[self.config.trigger_type],
+            reduce_only=True,
+            emulation_trigger=TriggerType[self.config.emulation_trigger],
+        )
+
+        self.trailing_stop = order
+        self.submit_order(order, position_id=self.position_id)
+
+    def trailing_stop_sell(self) -> None:
+        """
+        Users simple trailing stop SELL for (LONG positions).
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        last_quote = self.cache.quote_tick(self.config.instrument_id)
+        if not last_quote:
+            self.log.warning("Cannot submit order: no quotes yet")
+            return
+
+        offset = self.atr.value * self.config.trailing_atr_multiple
+        order: TrailingStopMarketOrder = self.order_factory.trailing_stop_market(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.SELL,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            # limit_offset=Decimal(f"{offset / 2:.{self.instrument.price_precision}f}"),
+            # price=self.instrument.make_price(last_quote.bid_price.as_double() - offset),
+            trailing_offset=Decimal(f"{offset:.{self.instrument.price_precision}f}"),
+            trailing_offset_type=TrailingOffsetType[self.config.trailing_offset_type],
+            trigger_type=TriggerType[self.config.trigger_type],
+            reduce_only=True,
+            emulation_trigger=TriggerType[self.config.emulation_trigger],
+        )
+
+        self.trailing_stop = order
+        self.submit_order(order, position_id=self.position_id)
+
+    def on_data(self, data: Data) -> None:
+        """
+        Actions to be performed when the strategy is running and receives data.
+
+        Parameters
+        ----------
+        data : Data
+            The data received.
+
+        """
+
+    def on_event(self, event: Event) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an event.
+
+        Parameters
+        ----------
+        event : Event
+            The event received.
+
+        """
+        if isinstance(event, OrderFilled):
+            if self.trailing_stop and event.client_order_id == self.trailing_stop.client_order_id:
+                self.trailing_stop = None
+        elif isinstance(event, PositionOpened | PositionChanged):
+            if self.trailing_stop:
+                return  # Already a trailing stop
+            if self.entry and event.opening_order_id == self.entry.client_order_id:
+                if event.entry == OrderSide.BUY:
+                    self.position_id = event.position_id
+                    self.trailing_stop_sell()
+                elif event.entry == OrderSide.SELL:
+                    self.position_id = event.position_id
+                    self.trailing_stop_buy()
+        elif isinstance(event, PositionClosed):
+            self.position_id = None
+
+    def on_save(self) -> dict[str, bytes]:
+        """
+        Actions to be performed when the strategy is saved.
+
+        Create and return a state dictionary of values to be saved.
+
+        Returns
+        -------
+        dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+        return {}
+
+    def on_load(self, state: dict[str, bytes]) -> None:
+        """
+        Actions to be performed when the strategy is loaded.
+
+        Saved state values will be contained in the give state dictionary.
+
+        Parameters
+        ----------
+        state : dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+
+    def on_dispose(self) -> None:
+        """
+        Actions to be performed when the strategy is disposed.
+
+        Cleanup any resources used by the strategy here.
+
+        """
+
+</document_content>
+</document>
+<document index="2325">
+<source>nautilus_trader/examples/strategies/ema_cross_twap.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+from decimal import Decimal
+from typing import Any
+
+import pandas as pd
+
+from nautilus_trader.common.enums import LogColor
+from nautilus_trader.config import PositiveFloat
+from nautilus_trader.config import PositiveInt
+from nautilus_trader.config import StrategyConfig
+from nautilus_trader.core.correctness import PyCondition
+from nautilus_trader.core.data import Data
+from nautilus_trader.core.message import Event
+from nautilus_trader.indicators import ExponentialMovingAverage
+from nautilus_trader.model.book import OrderBook
+from nautilus_trader.model.data import Bar
+from nautilus_trader.model.data import BarType
+from nautilus_trader.model.data import OrderBookDeltas
+from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model.data import TradeTick
+from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.enums import TimeInForce
+from nautilus_trader.model.identifiers import ExecAlgorithmId
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.model.orders import MarketOrder
+from nautilus_trader.trading.strategy import Strategy
+
+
+# *** THIS IS A TEST STRATEGY WITH NO ALPHA ADVANTAGE WHATSOEVER. ***
+# *** IT IS NOT INTENDED TO BE USED TO TRADE LIVE WITH REAL MONEY. ***
+
+
+class EMACrossTWAPConfig(StrategyConfig, frozen=True):
+    """
+    Configuration for ``EMACrossTWAP`` instances.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+    bar_type : BarType
+        The bar type for the strategy.
+    trade_size : Decimal
+        The position size per trade.
+    fast_ema_period : PositiveInt, default 10
+        The fast EMA period.
+    slow_ema_period : PositiveInt, default 20
+        The slow EMA period.
+    twap_horizon_secs : PositiveFloat, default 30.0
+        The TWAP horizon (seconds) over which the algorithm will execute.
+    twap_interval_secs : PositiveFloat, default 3.0
+        The TWAP interval (seconds) between orders.
+    close_positions_on_stop : bool, default True
+        If all open positions should be closed on strategy stop.
+
+    """
+
+    instrument_id: InstrumentId
+    bar_type: BarType
+    trade_size: Decimal
+    fast_ema_period: PositiveInt = 10
+    slow_ema_period: PositiveInt = 20
+    twap_horizon_secs: PositiveFloat = 30.0
+    twap_interval_secs: PositiveFloat = 3.0
+    close_positions_on_stop: bool = True
+
+
+class EMACrossTWAP(Strategy):
+    """
+    A simple moving average cross example strategy.
+
+    When the fast EMA crosses the slow EMA then enter a position at the market
+    in that direction.
+
+    Cancels all orders and closes all positions on stop.
+
+    Parameters
+    ----------
+    config : EMACrossConfig
+        The configuration for the instance.
+
+    Raises
+    ------
+    ValueError
+        If `config.fast_ema_period` is not less than `config.slow_ema_period`.
+    ValueError
+        If `config.twap_interval_secs` is not less than or equal to `config.twap_horizon_secs`.
+
+    """
+
+    def __init__(self, config: EMACrossTWAPConfig) -> None:
+        PyCondition.is_true(
+            config.fast_ema_period < config.slow_ema_period,
+            "{config.fast_ema_period=} must be less than {config.slow_ema_period=}",
+        )
+        PyCondition.is_true(
+            config.twap_interval_secs <= config.twap_horizon_secs,
+            "{config.twap_interval_secs=} must be less than or equal to {config.twap_horizon_secs=}",
+        )
+        super().__init__(config)
+
+        self.instrument: Instrument = None  # Initialized in on_start
+
+        # Create the indicators for the strategy
+        self.fast_ema = ExponentialMovingAverage(config.fast_ema_period)
+        self.slow_ema = ExponentialMovingAverage(config.slow_ema_period)
+
+        # Order management
+        self.twap_exec_algorithm_id = ExecAlgorithmId("TWAP")
+        self.twap_exec_algorithm_params: dict[str, Any] = {
+            "horizon_secs": config.twap_horizon_secs,
+            "interval_secs": config.twap_interval_secs,
+        }
+
+    def on_start(self) -> None:
+        """
+        Actions to be performed on strategy start.
+        """
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
+            self.stop()
+            return
+
+        # Register the indicators for updating
+        self.register_indicator_for_bars(self.config.bar_type, self.fast_ema)
+        self.register_indicator_for_bars(self.config.bar_type, self.slow_ema)
+
+        # Get historical data
+        self.request_bars(
+            self.config.bar_type,
+            start=self._clock.utc_now() - pd.Timedelta(days=1),
+        )
+
+        # Subscribe to live data
+        self.subscribe_bars(self.config.bar_type)
+        self.subscribe_quote_ticks(self.config.instrument_id)
+
+    def on_instrument(self, instrument: Instrument) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an instrument.
+
+        Parameters
+        ----------
+        instrument : Instrument
+            The instrument received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(instrument), LogColor.CYAN)
+
+    def on_order_book_deltas(self, deltas: OrderBookDeltas) -> None:
+        """
+        Actions to be performed when the strategy is running and receives order book
+        deltas.
+
+        Parameters
+        ----------
+        deltas : OrderBookDeltas
+            The order book deltas received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(deltas), LogColor.CYAN)
+
+    def on_order_book(self, order_book: OrderBook) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an order book.
+
+        Parameters
+        ----------
+        order_book : OrderBook
+            The order book received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(order_book), LogColor.CYAN)
+
+    def on_quote_tick(self, tick: QuoteTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a quote tick.
+
+        Parameters
+        ----------
+        tick : QuoteTick
+            The tick received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(tick), LogColor.CYAN)
+
+    def on_trade_tick(self, tick: TradeTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a trade tick.
+
+        Parameters
+        ----------
+        tick : TradeTick
+            The tick received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(tick), LogColor.CYAN)
+
+    def on_bar(self, bar: Bar) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a bar.
+
+        Parameters
+        ----------
+        bar : Bar
+            The bar received.
+
+        """
+        self.log.info(repr(bar), LogColor.CYAN)
+
+        # Check if indicators ready
+        if not self.indicators_initialized():
+            self.log.info(
+                f"Waiting for indicators to warm up [{self.cache.bar_count(self.config.bar_type)}]",
+                color=LogColor.BLUE,
+            )
+            return  # Wait for indicators to warm up...
+
+        if bar.is_single_price():
+            # Implies no market information for this bar
+            return
+
+        # BUY LOGIC
+        if self.fast_ema.value >= self.slow_ema.value:
+            if self.portfolio.is_flat(self.config.instrument_id):
+                self.buy()
+            elif self.portfolio.is_net_short(self.config.instrument_id):
+                self.close_all_positions(self.config.instrument_id)
+                self.buy()
+        # SELL LOGIC
+        elif self.fast_ema.value < self.slow_ema.value:
+            if self.portfolio.is_flat(self.config.instrument_id):
+                self.sell()
+            elif self.portfolio.is_net_long(self.config.instrument_id):
+                self.close_all_positions(self.config.instrument_id)
+                self.sell()
+
+    def buy(self) -> None:
+        """
+        Users simple buy method (example).
+        """
+        order: MarketOrder = self.order_factory.market(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.BUY,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            time_in_force=TimeInForce.FOK,
+            exec_algorithm_id=self.twap_exec_algorithm_id,
+            exec_algorithm_params=self.twap_exec_algorithm_params,
+        )
+
+        self.submit_order(order)
+
+    def sell(self) -> None:
+        """
+        Users simple sell method (example).
+        """
+        order: MarketOrder = self.order_factory.market(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.SELL,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            time_in_force=TimeInForce.FOK,
+            exec_algorithm_id=self.twap_exec_algorithm_id,
+            exec_algorithm_params=self.twap_exec_algorithm_params,
+        )
+
+        self.submit_order(order)
+
+    def on_data(self, data: Data) -> None:
+        """
+        Actions to be performed when the strategy is running and receives data.
+
+        Parameters
+        ----------
+        data : Data
+            The data received.
+
+        """
+
+    def on_event(self, event: Event) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an event.
+
+        Parameters
+        ----------
+        event : Event
+            The event received.
+
+        """
+
+    def on_stop(self) -> None:
+        """
+        Actions to be performed when the strategy is stopped.
+        """
+        self.cancel_all_orders(self.config.instrument_id)
+        if self.config.close_positions_on_stop:
+            self.close_all_positions(self.config.instrument_id)
+
+        # Unsubscribe from data
+        self.unsubscribe_bars(self.config.bar_type)
+
+    def on_reset(self) -> None:
+        """
+        Actions to be performed when the strategy is reset.
+        """
+        # Reset indicators here
+        self.fast_ema.reset()
+        self.slow_ema.reset()
+
+    def on_save(self) -> dict[str, bytes]:
+        """
+        Actions to be performed when the strategy is saved.
+
+        Create and return a state dictionary of values to be saved.
+
+        Returns
+        -------
+        dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+        return {}
+
+    def on_load(self, state: dict[str, bytes]) -> None:
+        """
+        Actions to be performed when the strategy is loaded.
+
+        Saved state values will be contained in the give state dictionary.
+
+        Parameters
+        ----------
+        state : dict[str, bytes]
+            The strategy state dictionary.
+
+        """
+
+    def on_dispose(self) -> None:
+        """
+        Actions to be performed when the strategy is disposed.
+
+        Cleanup any resources used by the strategy here.
+
+        """
+
+</document_content>
+</document>
+<document index="2326">
+<source>nautilus_trader/examples/strategies/market_maker.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+from decimal import Decimal
+
+from nautilus_trader.core.message import Event
+from nautilus_trader.model.book import OrderBook
+from nautilus_trader.model.data import OrderBookDeltas
+from nautilus_trader.model.enums import BookType
+from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.enums import PositionSide
+from nautilus_trader.model.events import PositionChanged
+from nautilus_trader.model.events import PositionClosed
+from nautilus_trader.model.events import PositionOpened
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.model.objects import Price
+from nautilus_trader.trading.strategy import Strategy
+
+
+class MarketMaker(Strategy):
+    """
+    Provides a market making strategy for testing.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+    trade_size : Decimal
+        The position size per trade.
+    max_size : Decimal
+        The maximum inventory size allowed.
+
+    """
+
+    def __init__(
+        self,
+        instrument_id: InstrumentId,
+        trade_size: Decimal,
+        max_size: Decimal,
+    ) -> None:
+        super().__init__()
+
+        # Configuration
+        self.instrument_id = instrument_id
+        self.trade_size = trade_size
+        self.max_size = max_size
+
+        self.instrument: Instrument | None = None  # Initialized in on_start
+        self._book: OrderBook | None = None
+        self._mid: Decimal | None = None
+        self._adj = Decimal(0)
+
+    def on_start(self) -> None:
+        self.instrument = self.cache.instrument(self.instrument_id)
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.instrument_id}")
+            self.stop()
+            return
+
+        # Create orderbook
+        self._book = OrderBook(
+            instrument_id=self.instrument.id,
+            book_type=BookType.L2_MBP,
+        )
+
+        # Subscribe to live data
+        self.subscribe_order_book_deltas(self.instrument_id)
+
+    def on_order_book_deltas(self, deltas: OrderBookDeltas) -> None:
+        if not self._book:
+            self.log.error("No book being maintained")
+            return
+
+        self._book.apply_deltas(deltas)
+        bid_price = self._book.best_bid_price()
+        ask_price = self._book.best_ask_price()
+        if bid_price and ask_price:
+            mid = (bid_price + ask_price) / 2
+            if mid != self._mid:
+                self.cancel_all_orders(self.instrument_id)
+                self._mid = Decimal(mid)
+                val = self._mid + self._adj
+                self.buy(price=val * Decimal("1.01"))
+                self.sell(price=val * Decimal("0.99"))
+
+    def on_event(self, event: Event) -> None:
+        if isinstance(event, PositionOpened | PositionChanged):
+            signed_qty = event.quantity.as_decimal()
+            if event.side == PositionSide.SHORT:
+                signed_qty = -signed_qty
+            self._adj = (signed_qty / self.max_size) * Decimal("0.01")
+        elif isinstance(event, PositionClosed):
+            self._adj = Decimal(0)
+
+    def buy(self, price: Decimal) -> None:
+        """
+        Users simple buy method (example).
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        order = self.order_factory.limit(
+            instrument_id=self.instrument_id,
+            order_side=OrderSide.BUY,
+            price=Price(price, precision=self.instrument.price_precision),
+            quantity=self.instrument.make_qty(self.trade_size),
+        )
+
+        self.submit_order(order)
+
+    def sell(self, price: Decimal) -> None:
+        """
+        Users simple sell method (example).
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        order = self.order_factory.limit(
+            instrument_id=self.instrument_id,
+            order_side=OrderSide.SELL,
+            price=Price(price, precision=self.instrument.price_precision),
+            quantity=self.instrument.make_qty(self.trade_size),
+        )
+
+        self.submit_order(order)
+
+    def on_stop(self) -> None:
+        """
+        Actions to be performed when the strategy is stopped.
+        """
+        self.cancel_all_orders(self.instrument_id)
+        self.close_all_positions(self.instrument_id)
+
+</document_content>
+</document>
+<document index="2327">
+<source>nautilus_trader/examples/strategies/orderbook_imbalance.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+import datetime
+from decimal import Decimal
+
+from nautilus_trader.config import NonNegativeFloat
+from nautilus_trader.config import PositiveFloat
+from nautilus_trader.config import StrategyConfig
+from nautilus_trader.core.rust.common import LogColor
+from nautilus_trader.model.book import OrderBook
+from nautilus_trader.model.data import OrderBookDeltas
+from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model.enums import BookType
+from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.enums import TimeInForce
+from nautilus_trader.model.enums import book_type_from_str
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.model.objects import Quantity
+from nautilus_trader.trading.strategy import Strategy
+
+
+# *** THIS IS A TEST STRATEGY WITH NO ALPHA ADVANTAGE WHATSOEVER. ***
+# *** IT IS NOT INTENDED TO BE USED TO TRADE LIVE WITH REAL MONEY. ***
+
+
+class OrderBookImbalanceConfig(StrategyConfig, frozen=True):
+    """
+    Configuration for ``OrderBookImbalance`` instances.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+    max_trade_size : Decimal
+        The max position size per trade (volume on the level can be less).
+    trigger_min_size : PositiveFloat, default 100.0
+        The minimum size on the larger side to trigger an order.
+    trigger_imbalance_ratio : PositiveFloat, default 0.20
+        The ratio of bid:ask volume required to trigger an order (smaller
+        value / larger value) ie given a trigger_imbalance_ratio=0.2, and a
+        bid volume of 100, we will send a buy order if the ask volume is <
+        20).
+    min_seconds_between_triggers : NonNegativeFloat, default 1.0
+        The minimum time between triggers.
+    book_type : str, default 'L2_MBP'
+        The order book type for the strategy.
+    use_quote_ticks : bool, default False
+        If quotes should be used.
+    dry_run : bool, default False
+        If dry run mode is active. If True, then no new orders will be submitted.
+
+    """
+
+    instrument_id: InstrumentId
+    max_trade_size: Decimal
+    trigger_min_size: PositiveFloat = 100.0
+    trigger_imbalance_ratio: PositiveFloat = 0.20
+    min_seconds_between_triggers: NonNegativeFloat = 1.0
+    book_type: str = "L2_MBP"
+    use_quote_ticks: bool = False
+    dry_run: bool = False
+
+
+class OrderBookImbalance(Strategy):
+    """
+    A simple strategy that sends FOK limit orders when there is a bid/ask imbalance in
+    the order book.
+
+    Cancels all orders and closes all positions on stop.
+
+    Parameters
+    ----------
+    config : OrderbookImbalanceConfig
+        The configuration for the instance.
+
+    """
+
+    def __init__(self, config: OrderBookImbalanceConfig) -> None:
+        assert 0 < config.trigger_imbalance_ratio < 1
+        super().__init__(config)
+
+        # Initialized in on_start
+        self.instrument: Instrument | None = None
+        if self.config.use_quote_ticks:
+            assert self.config.book_type == "L1_MBP"
+        self.book_type: BookType = book_type_from_str(self.config.book_type)
+        self._last_trigger_timestamp: datetime.datetime | None = None
+
+    def on_start(self) -> None:
+        """
+        Actions to be performed on strategy start.
+        """
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
+            self.stop()
+            return
+
+        if self.config.use_quote_ticks:
+            self.book_type = BookType.L1_MBP
+            self.subscribe_quote_ticks(self.instrument.id)
+        else:
+            self.book_type = book_type_from_str(self.config.book_type)
+            self.subscribe_order_book_deltas(self.instrument.id, self.book_type)
+
+        # Initialize to None to allow immediate first execution
+        self._last_trigger_timestamp = None
+
+    def on_order_book_deltas(self, deltas: OrderBookDeltas) -> None:
+        """
+        Actions to be performed when order book deltas are received.
+        """
+        self.check_trigger()
+
+    def on_quote_tick(self, tick: QuoteTick) -> None:
+        """
+        Actions to be performed when a delta is received.
+        """
+        self.check_trigger()
+
+    def on_order_book(self, order_book: OrderBook) -> None:
+        """
+        Actions to be performed when an order book update is received.
+        """
+        self.check_trigger()
+
+    def check_trigger(self) -> None:  # noqa: C901 (too complex)
+        """
+        Check for trigger conditions.
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        # Fetch book from the cache being maintained by the `DataEngine`
+        book = self.cache.order_book(self.config.instrument_id)
+        if not book:
+            self.log.error("No book being maintained")
+            return
+
+        if not book.spread():
+            return
+
+        bid_size: Quantity | None = book.best_bid_size()
+        ask_size: Quantity | None = book.best_ask_size()
+        if (bid_size is None or bid_size <= 0) or (ask_size is None or ask_size <= 0):
+            self.log.warning("No market yet")
+            return
+
+        smaller = min(bid_size, ask_size)
+        larger = max(bid_size, ask_size)
+        ratio = smaller / larger
+        self.log.info(
+            f"Book: {book.best_bid_price()} @ {book.best_ask_price()} ({ratio=:0.2f})",
+        )
+
+        # Check time since last trigger only if there was a previous trigger
+        if self._last_trigger_timestamp is not None:
+            seconds_since_last_trigger = (
+                self.clock.utc_now() - self._last_trigger_timestamp
+            ).total_seconds()
+        else:
+            seconds_since_last_trigger = float("inf")  # Allow first trigger
+
+        if larger > self.config.trigger_min_size and ratio < self.config.trigger_imbalance_ratio:
+            self.log.info(
+                "Trigger conditions met, checking for existing orders and time since last order",
+            )
+            if len(self.cache.orders_inflight(strategy_id=self.id)) > 0:
+                self.log.info("Already have orders in flight - skipping.")
+            elif seconds_since_last_trigger < self.config.min_seconds_between_triggers:
+                self.log.info("Time since last order < min_seconds_between_triggers - skipping")
+            elif bid_size > ask_size:
+                # Clamp order size to max_trade_size
+                trade_qty = min(ask_size, Quantity.from_str(str(self.config.max_trade_size)))
+                order = self.order_factory.limit(
+                    instrument_id=self.instrument.id,
+                    price=self.instrument.make_price(book.best_ask_price()),
+                    order_side=OrderSide.BUY,
+                    quantity=self.instrument.make_qty(trade_qty),
+                    post_only=False,
+                    time_in_force=TimeInForce.FOK,
+                )
+                self._last_trigger_timestamp = self.clock.utc_now()
+                self.log.info(f"Hitting! {order=}", color=LogColor.BLUE)
+                if self.config.dry_run:
+                    self.log.warning("Dry run mode is active; skipping new order submission")
+                    return
+                self.submit_order(order)
+            else:
+                # Clamp order size to max_trade_size
+                trade_qty = min(bid_size, Quantity.from_str(str(self.config.max_trade_size)))
+                order = self.order_factory.limit(
+                    instrument_id=self.instrument.id,
+                    price=self.instrument.make_price(book.best_bid_price()),
+                    order_side=OrderSide.SELL,
+                    quantity=self.instrument.make_qty(trade_qty),
+                    post_only=False,
+                    time_in_force=TimeInForce.FOK,
+                )
+                self._last_trigger_timestamp = self.clock.utc_now()
+                self.log.info(f"Hitting! {order=}", color=LogColor.BLUE)
+                if self.config.dry_run:
+                    self.log.warning("Dry run mode is active; skipping new order submission")
+                    return
+                self.submit_order(order)
+
+    def on_reset(self) -> None:
+        """
+        Actions to be performed when the strategy is reset.
+        """
+        self._last_trigger_timestamp = None
+
+    def on_stop(self) -> None:
+        """
+        Actions to be performed when the strategy is stopped.
+        """
+        if self.instrument is None:
+            return
+
+        self.cancel_all_orders(self.instrument.id)
+        self.close_all_positions(self.instrument.id)
+
+</document_content>
+</document>
+<document index="2328">
+<source>nautilus_trader/examples/strategies/orderbook_imbalance_rust.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+import datetime
+from decimal import Decimal
+
+from nautilus_trader.config import NonNegativeFloat
+from nautilus_trader.config import PositiveFloat
+from nautilus_trader.config import StrategyConfig
+from nautilus_trader.core import nautilus_pyo3
+from nautilus_trader.core.rust.common import LogColor
+from nautilus_trader.model.book import OrderBook
+from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.enums import TimeInForce
+from nautilus_trader.model.enums import book_type_from_str
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.trading.strategy import Strategy
+
+
+# *** THIS IS A TEST STRATEGY WITH NO ALPHA ADVANTAGE WHATSOEVER. ***
+# *** IT IS NOT INTENDED TO BE USED TO TRADE LIVE WITH REAL MONEY. ***
+
+
+class OrderBookImbalanceConfig(StrategyConfig, frozen=True):
+    """
+    Configuration for ``OrderBookImbalance`` instances.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+    max_trade_size : Decimal
+        The max position size per trade (size on the level can be less).
+    trigger_min_size : PositiveFloat, default 100.0
+        The minimum size on the larger side to trigger an order.
+    trigger_imbalance_ratio : PositiveFloat, default 0.20
+        The ratio of bid:ask volume required to trigger an order (smaller
+        value / larger value) ie given a trigger_imbalance_ratio=0.2, and a
+        bid volume of 100, we will send a buy order if the ask volume is <
+        20).
+    min_seconds_between_triggers : NonNegativeFloat, default 1.0
+        The minimum time between triggers.
+    book_type : str, default 'L2_MBP'
+        The order book type for the strategy.
+    use_quote_ticks : bool, default False
+        If quotes should be used.
+
+    """
+
+    instrument_id: InstrumentId
+    max_trade_size: Decimal
+    trigger_min_size: PositiveFloat = 100.0
+    trigger_imbalance_ratio: PositiveFloat = 0.20
+    min_seconds_between_triggers: NonNegativeFloat = 1.0
+    book_type: str = "L2_MBP"
+    use_quote_ticks: bool = False
+
+
+class OrderBookImbalance(Strategy):
+    """
+    A simple strategy that sends FOK limit orders when there is a bid/ask imbalance in
+    the order book.
+
+    Cancels all orders and closes all positions on stop.
+
+    Parameters
+    ----------
+    config : OrderbookImbalanceConfig
+        The configuration for the instance.
+
+    """
+
+    def __init__(self, config: OrderBookImbalanceConfig) -> None:
+        assert 0 < config.trigger_imbalance_ratio < 1
+        super().__init__(config)
+
+        self.instrument: Instrument | None = None
+        if self.config.use_quote_ticks:
+            assert self.config.book_type == "L1_MBP"
+        self.book_type: nautilus_pyo3.BookType = nautilus_pyo3.BookType(self.config.book_type)
+        self._last_trigger_timestamp: datetime.datetime | None = None
+
+        # We need to initialize the Rust pyo3 objects
+        pyo3_instrument_id = nautilus_pyo3.InstrumentId.from_str(self.config.instrument_id.value)
+        self.book = nautilus_pyo3.OrderBook(pyo3_instrument_id, self.book_type)
+        self.imbalance = nautilus_pyo3.BookImbalanceRatio()
+
+    def on_start(self) -> None:
+        """
+        Actions to be performed on strategy start.
+        """
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
+            self.stop()
+            return
+
+        if self.config.use_quote_ticks:
+            self.book_type = nautilus_pyo3.BookType.L1_MBP
+            self.subscribe_quote_ticks(self.instrument.id)
+        else:
+            self.book_type = book_type_from_str(self.config.book_type)
+            self.subscribe_order_book_deltas(
+                self.instrument.id,
+                self.book_type,
+                managed=False,  # <-- Manually applying deltas to book
+                pyo3_conversion=True,  # <--- Will automatically convert to pyo3 objects
+            )
+
+        self._last_trigger_timestamp = self.clock.utc_now()
+
+    def on_order_book_deltas(self, pyo3_deltas: nautilus_pyo3.OrderBookDeltas) -> None:
+        """
+        Actions to be performed when order book deltas are received.
+        """
+        self.book.apply_deltas(pyo3_deltas)
+        self.imbalance.handle_book(self.book)
+        self.check_trigger()
+
+    def on_quote_tick(self, quote: QuoteTick) -> None:
+        """
+        Actions to be performed when a quote tick is received.
+        """
+        if self.config.use_quote_ticks:
+            nautilus_pyo3.update_book_with_quote_tick(self.book, quote)
+            self.imbalance.handle_book(self.book)
+            self.check_trigger()
+
+    def on_order_book(self, book: OrderBook) -> None:
+        """
+        Actions to be performed when an order book update is received.
+        """
+        self.check_trigger()
+
+    def check_trigger(self) -> None:
+        """
+        Check for trigger conditions.
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        # This could be more efficient: for demonstration
+        bid_price = self.book.best_bid_price()
+        ask_price = self.book.best_ask_price()
+        bid_size = self.book.best_bid_size()
+        ask_size = self.book.best_ask_size()
+        if not bid_size or not ask_size:
+            self.log.warning("No market yet")
+            return
+
+        larger = max(bid_size.as_double(), ask_size.as_double())
+        ratio = self.imbalance.value
+        self.log.info(
+            f"Book: {self.book.best_bid_price()} @ {self.book.best_ask_price()} ({ratio=:0.2f})",
+        )
+        seconds_since_last_trigger = (
+            self.clock.utc_now() - self._last_trigger_timestamp
+        ).total_seconds()
+
+        if larger > self.config.trigger_min_size and ratio < self.config.trigger_imbalance_ratio:
+            self.log.info(
+                "Trigger conditions met, checking for existing orders and time since last order",
+            )
+            if len(self.cache.orders_inflight(strategy_id=self.id)) > 0:
+                self.log.info("Already have orders in flight - skipping.")
+            elif seconds_since_last_trigger < self.config.min_seconds_between_triggers:
+                self.log.info("Time since last order < min_seconds_between_triggers - skipping")
+            elif bid_size.as_double() > ask_size.as_double():
+                order = self.order_factory.limit(
+                    instrument_id=self.instrument.id,
+                    price=self.instrument.make_price(ask_price),
+                    order_side=OrderSide.BUY,
+                    quantity=self.instrument.make_qty(ask_size),
+                    post_only=False,
+                    time_in_force=TimeInForce.FOK,
+                )
+                self._last_trigger_timestamp = self.clock.utc_now()
+                self.log.info(f"Hitting! {order=}", color=LogColor.BLUE)
+                self.submit_order(order)
+
+            else:
+                order = self.order_factory.limit(
+                    instrument_id=self.instrument.id,
+                    price=self.instrument.make_price(bid_price),
+                    order_side=OrderSide.SELL,
+                    quantity=self.instrument.make_qty(bid_size),
+                    post_only=False,
+                    time_in_force=TimeInForce.FOK,
+                )
+                self._last_trigger_timestamp = self.clock.utc_now()
+                self.log.info(f"Hitting! {order=}", color=LogColor.BLUE)
+                self.submit_order(order)
+
+    def on_stop(self) -> None:
+        """
+        Actions to be performed when the strategy is stopped.
+        """
+        if self.instrument is None:
+            return
+
+        self.cancel_all_orders(self.instrument.id)
+        self.close_all_positions(self.instrument.id)
+
+</document_content>
+</document>
+<document index="2329">
+<source>nautilus_trader/examples/strategies/signal_strategy.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+
+from nautilus_trader.config import StrategyConfig
+from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model.data import TradeTick
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.trading.strategy import Strategy
+
+
+# *** THIS IS A TEST STRATEGY ***
+
+
+class SignalStrategyConfig(StrategyConfig, frozen=True):
+    """
+    Configuration for ``SignalStrategy`` instances.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+
+    """
+
+    instrument_id: InstrumentId
+
+
+class SignalStrategy(Strategy):
+    """
+    A strategy that simply emits a signal counter (FOR TESTING PURPOSES ONLY).
+
+    Parameters
+    ----------
+    config : OrderbookImbalanceConfig
+        The configuration for the instance.
+
+    """
+
+    def __init__(self, config: SignalStrategyConfig) -> None:
+        super().__init__(config)
+        self.instrument: Instrument | None = None
+        self.counter = 0
+
+    def on_start(self) -> None:
+        """
+        Actions to be performed on strategy start.
+        """
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        self.subscribe_trade_ticks(instrument_id=self.config.instrument_id)
+        self.subscribe_quote_ticks(instrument_id=self.config.instrument_id)
+
+    def on_quote_tick(self, tick: QuoteTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a quote tick.
+        """
+        self.counter += 1
+        self.publish_signal(name="counter", value=self.counter, ts_event=tick.ts_event)
+
+    def on_trade_tick(self, tick: TradeTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a trade tick.
+        """
+        self.counter += 1
+        self.publish_signal(name="counter", value=self.counter, ts_event=tick.ts_event)
+
+</document_content>
+</document>
+<document index="2330">
+<source>nautilus_trader/examples/strategies/simpler_quoter.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+from decimal import Decimal
+
+from nautilus_trader.common.enums import LogColor
+from nautilus_trader.config import StrategyConfig
+from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.events import OrderFilled
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.trading.strategy import Strategy
+
+
+class SimpleQuoterStrategyConfig(StrategyConfig, frozen=True):
+    """
+    Configuration for the simple quoter strategy.
+    """
+
+    instrument_id: InstrumentId
+    order_qty: Decimal = Decimal(1)
+    tob_offset_ticks: int = 0
+    log_data: bool = False
+
+
+class SimpleQuoterStrategy(Strategy):
+    """
+    A quoter that places a limit order on each side of the book at a top-of-book offset.
+    """
+
+    def __init__(self, config: SimpleQuoterStrategyConfig) -> None:
+        super().__init__(config)
+        self.instrument = None
+        self._tick_size = Decimal(0)
+        self._price_offset = Decimal(0)
+        self._order_qty = None
+        self._bid_order = None
+        self._ask_order = None
+
+    def on_start(self) -> None:
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
+            self.stop()
+            return
+
+        self._tick_size = self.instrument.price_increment.as_decimal()
+        offset_ticks = max(self.config.tob_offset_ticks, 0)
+        self._price_offset = self._tick_size * offset_ticks
+        self._order_qty = self.instrument.make_qty(self.config.order_qty)
+
+        self.subscribe_quote_ticks(self.config.instrument_id)
+
+    def on_quote_tick(self, quote: QuoteTick) -> None:
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
+            self.stop()
+            return
+
+        if self.config.log_data:
+            self.log.info(repr(quote), LogColor.CYAN)
+
+        # Check if closed
+        if self._bid_order and self._bid_order.is_closed:
+            self._bid_order = None
+        if self._ask_order and self._ask_order.is_closed:
+            self._ask_order = None
+
+        bid_price = quote.bid_price.as_decimal() - self._price_offset
+        ask_price = quote.ask_price.as_decimal() + self._price_offset
+
+        if self._bid_order is None:
+            price = self.instrument.make_price(bid_price)
+            order = self.order_factory.limit(
+                instrument_id=self.config.instrument_id,
+                order_side=OrderSide.BUY,
+                price=price,
+                quantity=self._order_qty,
+            )
+            self._bid_order = order
+            self.submit_order(order)
+
+        if self._ask_order is None:
+            price = self.instrument.make_price(ask_price)
+            order = self.order_factory.limit(
+                instrument_id=self.config.instrument_id,
+                order_side=OrderSide.SELL,
+                price=price,
+                quantity=self._order_qty,
+            )
+            self._ask_order = order
+            self.submit_order(order)
+
+    def on_event(self, event) -> None:
+        # Handle fills and reset state
+        if isinstance(event, OrderFilled):
+            if self._bid_order and event.client_order_id == self._bid_order.client_order_id:
+                self._bid_order = None
+            elif self._ask_order and event.client_order_id == self._ask_order.client_order_id:
+                self._ask_order = None
+
+    def on_stop(self) -> None:
+        self.cancel_all_orders(self.config.instrument_id)
+        self.close_all_positions(self.config.instrument_id)
+        self._bid_order = None
+        self._ask_order = None
+
+</document_content>
+</document>
+<document index="2331">
+<source>nautilus_trader/examples/strategies/subscribe.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+from nautilus_trader.config import StrategyConfig
+from nautilus_trader.model.book import OrderBook
+from nautilus_trader.model.data import Bar
+from nautilus_trader.model.data import BarSpecification
+from nautilus_trader.model.data import BarType
+from nautilus_trader.model.data import OrderBookDeltas
+from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model.data import TradeTick
+from nautilus_trader.model.enums import AggregationSource
+from nautilus_trader.model.enums import BarAggregation
+from nautilus_trader.model.enums import BookType
+from nautilus_trader.model.enums import PriceType
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.trading.strategy import Strategy
+
+
+# *** THIS IS A TEST STRATEGY ***
+
+
+class SubscribeStrategyConfig(StrategyConfig, frozen=True):
+    """
+    Configuration for ``SubscribeStrategy`` instances.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+
+    """
+
+    instrument_id: InstrumentId
+    book_type: BookType | None = None
+    snapshots: bool = False
+    trade_ticks: bool = False
+    quote_ticks: bool = False
+    bars: bool = False
+
+
+class SubscribeStrategy(Strategy):
+    """
+    A strategy that simply subscribes to data and logs it (typically for testing
+    adapters)
+
+    Parameters
+    ----------
+    config : OrderbookImbalanceConfig
+        The configuration for the instance.
+
+    """
+
+    def __init__(self, config: SubscribeStrategyConfig) -> None:
+        super().__init__(config)
+        self.book: OrderBook | None = None
+
+    def on_start(self) -> None:
+        """
+        Actions to be performed on strategy start.
+        """
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
+            self.stop()
+            return
+
+        if self.config.book_type:
+            self.book = OrderBook(
+                instrument_id=self.instrument.id,
+                book_type=self.config.book_type,
+            )
+            if self.config.snapshots:
+                self.subscribe_order_book_at_interval(
+                    instrument_id=self.config.instrument_id,
+                    book_type=self.config.book_type,
+                )
+            else:
+                self.subscribe_order_book_deltas(
+                    instrument_id=self.config.instrument_id,
+                    book_type=self.config.book_type,
+                )
+
+        if self.config.trade_ticks:
+            self.subscribe_trade_ticks(instrument_id=self.config.instrument_id)
+        if self.config.quote_ticks:
+            self.subscribe_quote_ticks(instrument_id=self.config.instrument_id)
+        if self.config.bars:
+            bar_type: BarType = BarType(
+                instrument_id=self.config.instrument_id,
+                bar_spec=BarSpecification(
+                    step=5,
+                    aggregation=BarAggregation.SECOND,
+                    price_type=PriceType.LAST,
+                ),
+                aggregation_source=AggregationSource.EXTERNAL,
+            )
+            self.subscribe_bars(bar_type)
+
+    def on_order_book_deltas(self, deltas: OrderBookDeltas) -> None:
+        if not self.book:
+            self.log.error("No book being maintained")
+            return
+
+        self.book.apply_deltas(deltas)
+        self.log.info(str(self.book))
+
+    def on_order_book(self, order_book: OrderBook) -> None:
+        self.book = order_book
+        self.log.info(str(self.book))
+
+    def on_trade_tick(self, tick: TradeTick) -> None:
+        self.log.info(str(tick))
+
+    def on_quote_tick(self, tick: QuoteTick) -> None:
+        self.log.info(str(tick))
+
+    def on_bar(self, bar: Bar) -> None:
+        self.log.info(str(bar))
+
+</document_content>
+</document>
+<document index="2332">
+<source>nautilus_trader/examples/strategies/volatility_market_maker.py</source>
+<document_content>
+# -------------------------------------------------------------------------------------------------
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
+#  https://nautechsystems.io
+#
+#  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+# -------------------------------------------------------------------------------------------------
+
+from decimal import Decimal
+
+import pandas as pd
+
+from nautilus_trader.common.enums import LogColor
+from nautilus_trader.config import PositiveFloat
+from nautilus_trader.config import PositiveInt
+from nautilus_trader.config import StrategyConfig
+from nautilus_trader.core.data import Data
+from nautilus_trader.core.message import Event
+from nautilus_trader.indicators import AverageTrueRange
+from nautilus_trader.model.book import OrderBook
+from nautilus_trader.model.data import Bar
+from nautilus_trader.model.data import BarType
+from nautilus_trader.model.data import MarkPriceUpdate
+from nautilus_trader.model.data import OrderBookDeltas
+from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model.data import TradeTick
+from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.enums import TimeInForce
+from nautilus_trader.model.enums import TriggerType
+from nautilus_trader.model.events import OrderFilled
+from nautilus_trader.model.identifiers import ClientId
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.model.orders import LimitOrder
+from nautilus_trader.trading.strategy import Strategy
+
+
+# *** THIS IS A TEST STRATEGY WITH NO ALPHA ADVANTAGE WHATSOEVER. ***
+# *** IT IS NOT INTENDED TO BE USED TO TRADE LIVE WITH REAL MONEY. ***
+
+
+class VolatilityMarketMakerConfig(StrategyConfig, frozen=True):
+    """
+    Configuration for ``VolatilityMarketMaker`` instances.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+    bar_type : BarType
+        The bar type for the strategy.
+    atr_period : PositiveInt
+        The period for the ATR indicator.
+    atr_multiple : PositiveFloat
+        The ATR multiple for bracketing limit orders.
+    trade_size : Decimal
+        The position size per trade.
+    order_id_tag : str
+        The unique order ID tag for the strategy. Must be unique
+        amongst all running strategies for a particular trader ID.
+    emulation_trigger : str, default 'NO_TRIGGER'
+        The emulation trigger for submitting emulated orders.
+        If ``None`` then orders will not be emulated.
+    client_id : ClientId, optional
+        The custom client ID for data and execution.
+        For example if you have multiple clients for Binance you might use 'BINANCE-SPOT'.
+    reduce_only_on_stop : bool, default True
+        If position closing market orders on stop should be reduce-only.
+
+    """
+
+    instrument_id: InstrumentId
+    bar_type: BarType
+    atr_period: PositiveInt
+    atr_multiple: PositiveFloat
+    trade_size: Decimal
+    emulation_trigger: str = "NO_TRIGGER"
+    client_id: ClientId | None = None
+    reduce_only_on_stop: bool = True
+
+
+class VolatilityMarketMaker(Strategy):
+    """
+    A very basic market maker which brackets the top of book based on volatility
+    measured by an ATR indicator.
+
+    Cancels all orders and closes all positions on stop.
+
+    Parameters
+    ----------
+    config : VolatilityMarketMakerConfig
+        The configuration for the instance.
+
+    """
+
+    def __init__(self, config: VolatilityMarketMakerConfig) -> None:
+        super().__init__(config)
+
+        self.instrument: Instrument | None = None  # Initialized in on_start
+        self.client_id = config.client_id
+
+        # Create the indicators for the strategy
+        self.atr = AverageTrueRange(config.atr_period)
+
+        # Users order management variables
+        self.buy_order: LimitOrder | None = None
+        self.sell_order: LimitOrder | None = None
+
+    def on_start(self) -> None:
+        """
+        Actions to be performed on strategy start.
+        """
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
+            self.stop()
+            return
+
+        # Register the indicators for updating
+        self.register_indicator_for_bars(self.config.bar_type, self.atr)
+
+        # Get historical data
+        self.request_bars(
+            self.config.bar_type,
+            client_id=self.client_id,
+            start=self.clock.utc_now() - pd.Timedelta(days=1),
+        )
+
+        # Subscribe to live data
+        self.subscribe_bars(self.config.bar_type, client_id=self.client_id)
+        self.subscribe_quote_ticks(self.config.instrument_id, client_id=self.client_id)
+        self.subscribe_trade_ticks(self.config.instrument_id, client_id=self.client_id)
+
+    def on_data(self, data: Data) -> None:
+        """
+        Actions to be performed when the strategy is running and receives data.
+
+        Parameters
+        ----------
+        data : Data
+            The data received.
+
+        """
+        # For debugging (must add a subscription)
+        self.log.info(repr(data), LogColor.CYAN)
+
+    def on_instrument(self, instrument: Instrument) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an instrument.
+
+        Parameters
+        ----------
+        instrument : Instrument
+            The instrument received.
+
+        """
+        # For debugging (must add a subscription)
+        # self.log.info(repr(instrument), LogColor.CYAN)
+
+    def on_order_book(self, order_book: OrderBook) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an order book.
+
+        Parameters
+        ----------
+        order_book : OrderBook
+            The order book received.
+
+        """
+        # For debugging (must add a subscription)
+        self.log.info(repr(order_book), LogColor.CYAN)
+
+    def on_order_book_deltas(self, deltas: OrderBookDeltas) -> None:
+        """
+        Actions to be performed when the strategy is running and receives order book
+        deltas.
+
+        Parameters
+        ----------
+        deltas : OrderBookDeltas
+            The order book deltas received.
+
+        """
+        # For debugging (must add a subscription)
+        self.log.info(repr(deltas), LogColor.CYAN)
+
+    def on_quote_tick(self, tick: QuoteTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a quote tick.
+
+        Parameters
+        ----------
+        tick : QuoteTick
+            The tick received.
+
+        """
+        # For debugging (must add a subscription)
+        self.log.info(repr(tick), LogColor.CYAN)
+
+    def on_trade_tick(self, tick: TradeTick) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a trade tick.
+
+        Parameters
+        ----------
+        tick : TradeTick
+            The tick received.
+
+        """
+        # For debugging (must add a subscription)
+        self.log.info(repr(tick), LogColor.CYAN)
+
+    def on_mark_price(self, update: MarkPriceUpdate) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a mark price
+        update.
+
+        Parameters
+        ----------
+        update : MarkPriceUpdate
+            The update received.
+
+        """
+        # For debugging (must add a subscription)
+        self.log.info(repr(update), LogColor.CYAN)
+
+    def on_index_price(self, update: MarkPriceUpdate) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an index price
+        update.
+
+        Parameters
+        ----------
+        update : IndexPriceUpdate
+            The update received.
+
+        """
+        # For debugging (must add a subscription)
+        self.log.info(repr(update), LogColor.CYAN)
+
+    def on_bar(self, bar: Bar) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a bar.
+
+        Parameters
+        ----------
+        bar : Bar
+            The bar received.
+
+        """
+        self.log.info(repr(bar), LogColor.CYAN)
+
+        if not self.instrument:
+            self.log.error("No instrument loaded.")
+            return
+
+        # Check if indicators ready
+        if not self.indicators_initialized():
+            self.log.info(
+                f"Waiting for indicators to warm up [{self.cache.bar_count(self.config.bar_type)}]",
+                color=LogColor.BLUE,
+            )
+            return  # Wait for indicators to warm up...
+
+        last: QuoteTick = self.cache.quote_tick(self.config.instrument_id)
+        if last is None:
+            self.log.info("No quotes yet")
+            return
+
+        # Maintain buy orders
+        if self.buy_order and (self.buy_order.is_emulated or self.buy_order.is_open):
+            self.cancel_order(self.buy_order)
+        self.create_buy_order(last)
+
+        # Maintain sell orders
+        if self.sell_order and (self.sell_order.is_emulated or self.sell_order.is_open):
+            self.cancel_order(self.sell_order)
+        self.create_sell_order(last)
+
+    def create_buy_order(self, last: QuoteTick) -> None:
+        """
+        Market maker simple buy limit method (example).
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        price: Decimal = last.bid_price - (self.atr.value * self.config.atr_multiple)
+        order: LimitOrder = self.order_factory.limit(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.BUY,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            price=self.instrument.make_price(price),
+            time_in_force=TimeInForce.GTD,
+            expire_time=self.clock.utc_now() + pd.Timedelta(minutes=10),
+            post_only=True,  # default value is True
+            emulation_trigger=TriggerType[self.config.emulation_trigger],
+        )
+
+        self.buy_order = order
+        self.submit_order(order, client_id=self.client_id)
+
+    def create_sell_order(self, last: QuoteTick) -> None:
+        """
+        Market maker simple sell limit method (example).
+        """
+        if not self.instrument:
+            self.log.error("No instrument loaded")
+            return
+
+        price: Decimal = last.ask_price + (self.atr.value * self.config.atr_multiple)
+        order: LimitOrder = self.order_factory.limit(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.SELL,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            price=self.instrument.make_price(price),
+            time_in_force=TimeInForce.GTD,
+            expire_time=self.clock.utc_now() + pd.Timedelta(minutes=10),
+            post_only=True,  # default value is True
+            emulation_trigger=TriggerType[self.config.emulation_trigger],
+        )
+
+        self.sell_order = order
+        self.submit_order(order, client_id=self.client_id)
+
+    def on_event(self, event: Event) -> None:
+        """
+        Actions to be performed when the strategy is running and receives an event.
+
+        Parameters
+        ----------
+        event : Event
+            The event received.
+
+        """
+        last: QuoteTick = self.cache.quote_tick(self.config.instrument_id)
+        if last is None:
+            self.log.info("No quotes yet")
+            return
+
+        # If order filled then replace order at ATR multiple distance from the market
+        if isinstance(event, OrderFilled):
+            if self.buy_order and event.order_side == OrderSide.BUY:
+                if self.buy_order.is_closed:
+                    self.create_buy_order(last)
+            elif (
+                self.sell_order and event.order_side == OrderSide.SELL and self.sell_order.is_closed
+            ):
+                self.create_sell_order(last)
+
+    def on_stop(self) -> None:
+        """
+        Actions to be performed when the strategy is stopped.
+        """
+        self.cancel_all_orders(self.config.instrument_id, client_id=self.client_id)
+
+        self.close_all_positions(
+            instrument_id=self.config.instrument_id,
+            client_id=self.client_id,
+            reduce_only=self.config.reduce_only_on_stop,
+        )
+
+        # Unsubscribe from data
+        self.unsubscribe_bars(self.config.bar_type, client_id=self.client_id)
+        self.unsubscribe_quote_ticks(self.config.instrument_id, client_id=self.client_id)
+        self.unsubscribe_trade_ticks(self.config.instrument_id, client_id=self.client_id)
+
+    def on_reset(self) -> None:
+        """
+        Actions to be performed when the strategy is reset.
+        """
+        # Reset indicators here
+        self.atr.reset()
+
+</document_content>
+</document></documents>
