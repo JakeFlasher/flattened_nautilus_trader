@@ -1,0 +1,1249 @@
+========================================================
+ DATA INVENTORY & PREVIEW
+ Scan Path: /home/jakeshea/Desktop/binance.vision
+========================================================
+Here is a quick reference key for the standard Binance Spot columns so you can interpret the output:
+AggTrades (aggTrades)
+Aggregate TradeId
+Price
+Quantity
+First TradeId
+Last TradeId
+Timestamp
+Was the buyer the maker?
+Was the trade best price match?
+Klines / Candlestick (klines)
+Open time
+Open
+High
+Low
+Close
+Volume
+Close time
+Quote asset volume
+Number of trades
+Taker buy base asset volume
+Taker buy quote asset volume
+Ignore
+Trades (tradeLs)
+TradeId
+Price
+Qty
+QuoteQty
+Time
+isBuyerMaker
+isBestMatch
+FILE PATH: ./spot_data/daily/aggTrades/BTCUSDT-aggTrades-2024-03-30.csv
+--------------------------------------------------------------------------------
+2944964547 69850.53 0.00100 3521693422 3521693422 1711756800000  True True
+2944964548 69850.53 0.00062 3521693423 3521693423 1711756800002  True True
+2944964549 69850.53 0.00038 3521693424 3521693424 1711756800003  True True
+2944964550 69850.54 0.00025 3521693425 3521693425 1711756800003 False True
+================================================================================
+FILE PATH: ./spot_data/daily/klines/BTCUSDT-1m-2024-03-30.csv
+--------------------------------------------------------------------------------
+1711756800000 69850.53 69882.00 69842.58 69875.57 15.25174 1711756859999 1.065515e+06 1564 8.88679 620840.799446 0
+1711756860000 69875.57 69875.58 69820.90 69820.91 23.47369 1711756919999 1.639488e+06 1664 3.69118 257777.172949 0
+1711756920000 69820.91 69820.91 69790.00 69790.01 26.87128 1711756979999 1.875937e+06 1558 2.29291 160033.301510 0
+1711756980000 69790.01 69820.00 69790.00 69804.81 10.54531 1711757039999 7.360624e+05  861 6.55916 457812.177309 0
+================================================================================
+FILE PATH: ./spot_data/daily/trades/BTCUSDT-trades-2024-03-30.csv
+--------------------------------------------------------------------------------
+3521693422 69850.53 0.00100 69.850530 1711756800000  True True
+3521693423 69850.53 0.00062 43.307329 1711756800002  True True
+3521693424 69850.53 0.00038 26.543201 1711756800003  True True
+3521693425 69850.54 0.00025 17.462635 1711756800003 False True
+================================================================================
+FILE PATH: ./spot_data/monthly/aggTrades/BTCUSDT-aggTrades-2024-03.csv
+--------------------------------------------------------------------------------
+2887215115 61130.99 0.00140 3445374968 3445374968 1709251200000 False True
+2887215116 61130.98 0.00128 3445374969 3445374969 1709251200000  True True
+2887215117 61130.99 0.00076 3445374970 3445374970 1709251200001 False True
+2887215118 61130.99 0.00046 3445374971 3445374971 1709251200001 False True
+================================================================================
+FILE PATH: ./spot_data/monthly/klines/BTCUSDT-1m-2024-03.csv
+--------------------------------------------------------------------------------
+1709251200000 61130.99 61197.66 61126.0 61196.00 121.02208 1709251259999 7.401624e+06 1634 73.72529 4.508643e+06 0
+1709251260000 61196.00 61217.41 61162.0 61185.84  40.04518 1709251319999 2.450217e+06 1049 25.77052 1.576635e+06 0
+1709251320000 61185.85 61201.10 61140.6 61147.58  37.98628 1709251379999 2.323737e+06 1431 18.96367 1.159952e+06 0
+1709251380000 61147.58 61186.26 61131.1 61163.85  25.16501 1709251439999 1.539027e+06  934 18.38791 1.124518e+06 0
+================================================================================
+FILE PATH: ./spot_data/monthly/trades/BTCUSDT-trades-2024-03.csv
+--------------------------------------------------------------------------------
+3445374968 61130.99 0.00140 85.583386 1709251200000 False True
+3445374969 61130.98 0.00128 78.247654 1709251200000  True True
+3445374970 61130.99 0.00076 46.459552 1709251200001 False True
+3445374971 61130.99 0.00046 28.120255 1709251200001 False True
+================================================================================
+FILE PATH: ./future_data/daily_data/aggTrades/BTCUSDT-aggTrades-2024-03-30.csv
+--------------------------------------------------------------------------------
+agg_trade_id   price quantity first_trade_id last_trade_id transact_time is_buyer_maker
+  2106960678 69903.5    0.014     4816251010    4816251012 1711756800014           true
+  2106960679 69902.0    0.022     4816251013    4816251014 1711756800014           true
+  2106960680 69901.4     0.25     4816251015    4816251016 1711756800014           true
+================================================================================
+FILE PATH: ./future_data/daily_data/bookDepth/BTCUSDT-bookDepth-2024-03-30.csv
+--------------------------------------------------------------------------------
+          timestamp percentage         depth           notional
+2024-03-30 00:00:09         -5 7950.49500000 543853183.11875000
+2024-03-30 00:00:09         -4 7189.14600000 492979590.63713000
+2024-03-30 00:00:09         -3 6178.04700000 424763607.62686000
+================================================================================
+FILE PATH: ./future_data/daily_data/bookTicker/BTCUSDT-bookTicker-2024-03-30.csv
+--------------------------------------------------------------------------------
+    update_id best_bid_price best_bid_qty best_ask_price best_ask_qty transaction_time    event_time
+4307082974693 69903.60000000   0.46200000 69903.70000000   4.41900000    1711756800002 1711756800008
+4307082974976 69903.60000000   0.36200000 69903.70000000   4.41900000    1711756800005 1711756800011
+4307082976403 69900.20000000   0.04700000 69900.30000000   2.58200000    1711756800014 1711756800021
+                                                                         1707089106288999936           
+================================================================================
+FILE PATH: ./future_data/daily_data/indexPriceKlines/BTCUSDT-1m-2024-03-30.csv
+--------------------------------------------------------------------------------
+    open_time           open           high            low          close volume    close_time quote_volume count taker_buy_volume taker_buy_quote_volume ignore
+1711756800000 69853.39255319 69882.05000000 69843.72872340 69875.26021277      0 1711756859999            0    60                0                      0      0
+1711756860000 69875.48234043 69875.57127660 69824.13425532 69827.48468085      0 1711756919999            0    60                0                      0      0
+1711756920000 69827.05680851 69827.58404255 69792.49702128 69794.58340426      0 1711756979999            0    60                0                      0      0
+================================================================================
+FILE PATH: ./future_data/daily_data/klines/BTCUSDT-1m-2024-03-30.csv
+--------------------------------------------------------------------------------
+    open_time     open     high      low    close  volume    close_time   quote_volume count taker_buy_volume taker_buy_quote_volume ignore
+1711756800000 69903.60 69933.00 69886.40 69924.80  71.424 1711756859999  4993486.29070  1660           42.502          2971357.61430      0
+1711756860000 69924.70 69924.80 69856.60 69874.70 167.937 1711756919999 11735923.94900  2531           26.292          1837398.47740      0
+1711756920000 69874.80 69874.80 69833.80 69837.70 142.346 1711756979999  9943171.16020  2022           41.365          2889478.97410      0
+================================================================================
+FILE PATH: ./future_data/daily_data/markPriceKlines/BTCUSDT-1m-2024-03-30.csv
+--------------------------------------------------------------------------------
+    open_time           open           high            low          close volume    close_time quote_volume count taker_buy_volume taker_buy_quote_volume ignore
+1711756800000 69898.66336879 69928.05254255 69886.40000000 69919.09796809      0 1711756859999            0    60                0                      0      0
+1711756860000 69921.76392553 69922.04764184 69863.40000000 69874.46450355      0 1711756919999            0    60                0                      0      0
+1711756920000 69874.14152482 69874.14152482 69833.80000000 69837.60000000      0 1711756979999            0    60                0                      0      0
+================================================================================
+FILE PATH: ./future_data/daily_data/metrics/BTCUSDT-metrics-2024-03-30.csv
+--------------------------------------------------------------------------------
+        create_time  symbol      sum_open_interest     sum_open_interest_value count_toptrader_long_short_ratio sum_toptrader_long_short_ratio count_long_short_ratio sum_taker_long_short_vol_ratio
+2024-03-30 00:05:00 BTCUSDT 81108.4350000000000000 5666717142.6535260000000000                       1.70938653                     1.39003800             1.51304798                     0.48213500
+2024-03-30 00:10:00 BTCUSDT 81066.2400000000000000 5664503520.0000000000000000                       1.71313963                     1.38878200             1.51450574                     0.78362600
+2024-03-30 00:15:00 BTCUSDT 81068.2950000000000000 5665068668.2590000000000000                       1.71030349                     1.38843600             1.51215071                     0.56988500
+================================================================================
+FILE PATH: ./future_data/daily_data/premiumIndexKlines/BTCUSDT-1m-2024-03-30.csv
+--------------------------------------------------------------------------------
+    open_time       open       high        low      close volume    close_time quote_volume count taker_buy_volume taker_buy_quote_volume ignore
+1711756800000 0.00071779 0.00079775 0.00054619 0.00064535      0 1711756859999            0    12                0                      0      0
+1711756860000 0.00070754 0.00079601 0.00054516 0.00063829      0 1711756919999            0    12                0                      0      0
+1711756920000 0.00067617 0.00067617 0.00042352 0.00063474      0 1711756979999            0    12                0                      0      0
+================================================================================
+FILE PATH: ./future_data/daily_data/trades/BTCUSDT-trades-2024-03-30.csv
+--------------------------------------------------------------------------------
+        id   price   qty quote_qty          time is_buyer_maker
+4816251001 69903.6  0.07  4893.252 1711756800014           true
+4816251002 69903.6 0.029 2027.2044 1711756800014           true
+4816251003 69903.6 0.012  838.8432 1711756800014           true
+================================================================================
+FILE PATH: ./future_data/monthly_data/aggTrades/BTCUSDT-aggTrades-2024-03.csv
+--------------------------------------------------------------------------------
+agg_trade_id   price quantity first_trade_id last_trade_id transact_time is_buyer_maker
+  2041763940 61203.4    0.663     4659223535    4659223584 1709251200019          false
+  2041763941 61203.5    0.002     4659223585    4659223585 1709251200020          false
+  2041763942 61204.0    0.003     4659223586    4659223586 1709251200020          false
+================================================================================
+FILE PATH: ./future_data/monthly_data/bookTicker/BTCUSDT-bookTicker-2024-03.csv
+--------------------------------------------------------------------------------
+    update_id best_bid_price best_bid_qty best_ask_price best_ask_qty transaction_time    event_time
+4070922145555 61203.30000000   2.65100000 61203.40000000   2.55900000    1709251200006 1709251200012
+4070922146137 61203.30000000   2.66100000 61203.40000000   2.55900000    1709251200009 1709251200020
+4070922146317 61203.30000000   3.73800000 61203.40000000   2.55900000    1709251200010 1709251200020
+================================================================================
+FILE PATH: ./future_data/monthly_data/fundingRate/BTCUSDT-fundingRate-2024-03.csv
+--------------------------------------------------------------------------------
+    calc_time funding_interval_hours last_funding_rate
+1709251200000                      8        0.00053322
+1709280000000                      8        0.00064824
+1709308800000                      8        0.00046010
+================================================================================
+FILE PATH: ./future_data/monthly_data/indexPriceKlines/BTCUSDT-1m-2024-03.csv
+--------------------------------------------------------------------------------
+    open_time           open           high            low          close volume    close_time quote_volume count taker_buy_volume taker_buy_quote_volume ignore
+1709251200000 61147.84361702 61185.10744681 61139.72063830 61169.10978723      0 1709251259999            0    60                0                      0      0
+1709251260000 61188.00063830 61211.84787234 61164.65914894 61184.39234043      0 1709251319999            0    60                0                      0      0
+1709251320000 61183.83000000 61198.19829787 61140.85212766 61146.80382979      0 1709251379999            0    60                0                      0      0
+================================================================================
+FILE PATH: ./future_data/monthly_data/klines/BTCUSDT-1m-2024-03.csv
+--------------------------------------------------------------------------------
+    open_time     open     high      low    close  volume    close_time   quote_volume count taker_buy_volume taker_buy_quote_volume ignore
+1709251200000 61203.30 61275.30 61199.40 61274.40 340.739 1709251259999 20867650.93210  4808          195.414         11967773.20820      0
+1709251260000 61274.30 61300.80 61235.80 61254.60 329.354 1709251319999 20176951.53260  3539          144.136          8831026.45690      0
+1709251320000 61254.50 61277.80 61208.30 61218.30 140.121 1709251379999  8580866.53790  2664           62.859          3849446.81980      0
+================================================================================
+FILE PATH: ./future_data/monthly_data/markPriceKlines/BTCUSDT-1m-2024-03.csv
+--------------------------------------------------------------------------------
+    open_time           open           high            low          close volume    close_time quote_volume count taker_buy_volume taker_buy_quote_volume ignore
+1709251200000 61203.40000000 61246.40956028 61198.65159929 61230.64423050      0 1709251259999            0    60                0                      0      0
+1709251260000 61230.64423050 61275.58192199 61229.23415248 61249.73545745      0 1709251319999            0    60                0                      0      0
+1709251320000 61249.17311702 61264.07675532 61208.26200709 61215.44796809      0 1709251379999            0    60                0                      0      0
+================================================================================
+FILE PATH: ./future_data/monthly_data/premiumIndexKlines/BTCUSDT-1m-2024-03.csv
+--------------------------------------------------------------------------------
+    open_time       open       high        low      close volume    close_time quote_volume count taker_buy_volume taker_buy_quote_volume ignore
+1709251200000 0.00089431 0.00135229 0.00089431 0.00125902      0 1709251259999            0    12                0                      0      0
+1709251260000 0.00171966 0.00171966 0.00120888 0.00126599      0 1709251319999            0    12                0                      0      0
+1709251320000 0.00114584 0.00143814 0.00105716 0.00115705      0 1709251379999            0    12                0                      0      0
+================================================================================
+FILE PATH: ./future_data/monthly_data/trades/BTCUSDT-trades-2024-03.csv
+--------------------------------------------------------------------------------
+        id   price   qty  quote_qty          time is_buyer_maker
+4659223533 61203.3 0.531 32498.9523 1709251200019           true
+4659223534 61203.3 0.509 31152.4797 1709251200019           true
+4659223535 61203.4 0.005    306.017 1709251200019          false
+================================================================================
+
+``` data_loader.py
+import shutil
+import pandas as pd
+import numpy as np
+import re
+from pathlib import Path
+from datetime import datetime, timedelta
+from nautilus_trader.model import InstrumentId, TradeId, Bar, BarType, BarSpecification, TradeTick, QuoteTick
+from nautilus_trader.core import Data
+from nautilus_trader.model.objects import Price, Quantity
+from nautilus_trader.model.enums import BarAggregation, PriceType, AggressorSide
+from nautilus_trader.persistence.catalog import ParquetDataCatalog
+from nautilus_trader.model.custom import customdataclass
+# --- CONFIGURATION ---
+# Ensure paths are absolute to avoid relative path issues
+BASE_DIR = Path(__file__).parent.resolve()
+CATALOG_PATH = BASE_DIR / "data/catalog"
+RAW_DATA_ROOT = BASE_DIR / "data/raw/futures"
+SYMBOL = "BTCUSDT"
+VENUE = "BINANCE"
+INSTRUMENT_ID = InstrumentId.from_str(f"{SYMBOL}.{VENUE}")
+# --- CUSTOM DATA DEFINITIONS ---
+@customdataclass
+class BinanceFundingRate(Data):
+    instrument_id: InstrumentId
+    rate: float
+    interval_hours: int
+@customdataclass
+class BinanceOiData(Data):
+    instrument_id: InstrumentId
+    open_interest_qty: float
+    open_interest_val: float
+    top_trader_ratio: float
+@customdataclass
+class BinanceDepthData(Data):
+    instrument_id: InstrumentId
+    percentage: float
+    depth_qty: float
+    notional: float
+# --- UTILITIES ---
+def ms_to_ns(ms):
+    """Convert milliseconds (int or float) to nanoseconds (int)."""
+    try:
+        return int(float(ms)) * 1_000_000
+    except (ValueError, TypeError):
+        return 0
+def parse_iso_ns(dt_str):
+    """Parse ISO string to nanoseconds."""
+    try:
+        return int(pd.Timestamp(dt_str).timestamp() * 1e9)
+    except:
+        return 0
+def extract_date_regex(fname):
+    """
+    Extracts YYYY-MM-DD from filename using Regex.
+    Much more robust than splitting by string.
+    """
+    match = re.search(r"(\d{4})-(\d{2})-(\d{2})", fname)
+    if match:
+        try:
+            return datetime.strptime(match.group(0), "%Y-%m-%d")
+        except ValueError:
+            return None
+    return None
+def read_csv_robust(file_path):
+    """
+    Reads CSV handling potential lack of headers.
+    """
+    try:
+        # Peek at the first row
+        df_peek = pd.read_csv(file_path, nrows=1)
+        if df_peek.empty:
+            return pd.DataFrame()
+        
+        # Heuristic: If the first column name looks like a number, it's likely headerless
+        first_col = str(df_peek.columns[0])
+        if first_col.replace('.', '', 1).isdigit():
+            return pd.read_csv(file_path, header=None)
+        else:
+            return pd.read_csv(file_path)
+    except Exception as e:
+        print(f"    [!] Read Error {file_path.name}: {e}")
+        return pd.DataFrame()
+# --- INGESTION HANDLERS ---
+def ingest_quotes(catalog, file_path):
+    """Ingests bookTicker data as QuoteTick."""
+    df = read_csv_robust(file_path)
+    if df.empty: return
+    # Normalize columns: update_id, best_bid_price, best_bid_qty, best_ask_price, best_ask_qty, transaction_time, event_time
+    if len(df.columns) >= 7:
+        df.columns = ['update_id', 'bid_price', 'bid_qty', 'ask_price', 'ask_qty', 'transact_time', 'event_time'][:len(df.columns)]
+    
+    ticks = []
+    for row in df.itertuples(index=False):
+        try:
+            ts = ms_to_ns(row.transact_time)
+            ticks.append(QuoteTick(
+                instrument_id=INSTRUMENT_ID,
+                bid_price=Price.from_str(f"{row.bid_price:.2f}"),
+                ask_price=Price.from_str(f"{row.ask_price:.2f}"),
+                bid_size=Quantity.from_str(f"{row.bid_qty:.3f}"),
+                ask_size=Quantity.from_str(f"{row.ask_qty:.3f}"),
+                ts_event=ts,
+                ts_init=ts
+            ))
+        except Exception:
+            continue
+    if ticks: catalog.write_data(ticks)
+def ingest_agg_trades(catalog, file_path):
+    """Ingests aggTrades as TradeTick."""
+    df = read_csv_robust(file_path)
+    if df.empty: return
+    # agg_trade_id, price, quantity, first_trade_id, last_trade_id, transact_time, is_buyer_maker
+    if len(df.columns) >= 7:
+        df.columns = ['agg_trade_id', 'price', 'quantity', 'first_id', 'last_id', 'transact_time', 'is_buyer_maker'][:len(df.columns)]
+    ticks = []
+    for row in df.itertuples(index=False):
+        try:
+            side = AggressorSide.SELLER if row.is_buyer_maker else AggressorSide.BUYER
+            ts = ms_to_ns(row.transact_time)
+            ticks.append(TradeTick(
+                instrument_id=INSTRUMENT_ID,
+                price=Price.from_str(f"{row.price:.2f}"),
+                size=Quantity.from_str(f"{row.quantity:.3f}"),
+                aggressor_side=side,
+                trade_id=TradeId(str(row.agg_trade_id)),
+                ts_event=ts,
+                ts_init=ts
+            ))
+        except Exception:
+            continue
+    if ticks: catalog.write_data(ticks)
+def ingest_klines(catalog, file_path):
+    """Ingests 1m Klines as Bar."""
+    df = read_csv_robust(file_path)
+    if df.empty: return
+    expected_cols = [
+        'open_time', 'open', 'high', 'low', 'close', 'volume',
+        'close_time', 'quote_volume', 'count', 
+        'taker_buy_vol', 'taker_buy_quote_vol', 'ignore'
+    ]
+    df.columns = expected_cols[:len(df.columns)]
+    bar_type = BarType(
+        instrument_id=INSTRUMENT_ID,
+        bar_spec=BarSpecification(1, BarAggregation.MINUTE, PriceType.LAST)
+    )
+    bars = []
+    for row in df.itertuples(index=False):
+        try:
+            ts = ms_to_ns(row.open_time)
+            bars.append(Bar(
+                bar_type=bar_type,
+                open=Price.from_str(f"{row.open:.2f}"),
+                high=Price.from_str(f"{row.high:.2f}"),
+                low=Price.from_str(f"{row.low:.2f}"),
+                close=Price.from_str(f"{row.close:.2f}"),
+                volume=Quantity.from_str(f"{row.volume:.3f}"),
+                ts_event=ts,
+                ts_init=ts
+            ))
+        except Exception:
+            continue
+    if bars: catalog.write_data(bars)
+def ingest_metrics(catalog, file_path):
+    """Ingests Open Interest Data."""
+    df = read_csv_robust(file_path)
+    if df.empty: return
+    
+    # Fallback for headerless metrics
+    if 'sum_open_interest' not in df.columns and len(df.columns) >= 4:
+        df.columns = ['create_time', 'symbol', 'sum_open_interest', 'sum_open_interest_value'] + list(df.columns[4:])
+    
+    data = []
+    for row in df.itertuples(index=False):
+        try:
+            ts = parse_iso_ns(row.create_time)
+            ratio = float(row.count_toptrader_long_short_ratio) if hasattr(row, 'count_toptrader_long_short_ratio') else 0.0
+            data.append(BinanceOiData(
+                instrument_id=INSTRUMENT_ID,
+                open_interest_qty=float(row.sum_open_interest),
+                open_interest_val=float(row.sum_open_interest_value),
+                top_trader_ratio=ratio,
+                ts_event=ts,
+                ts_init=ts
+            ))
+        except Exception:
+            continue
+    if data: catalog.write_data(data)
+def ingest_depth(catalog, file_path):
+    """Ingests Depth Data (Custom Format)."""
+    df = read_csv_robust(file_path)
+    if df.empty: return
+    
+    # Skip raw snapshots if they don't match custom format
+    if 'updateId' in df.columns or len(df.columns) < 4:
+        return
+    data = []
+    for row in df.itertuples(index=False):
+        try:
+            ts = parse_iso_ns(row.timestamp)
+            data.append(BinanceDepthData(
+                instrument_id=INSTRUMENT_ID,
+                percentage=float(row.percentage),
+                depth_qty=float(row.depth),
+                notional=float(row.notional),
+                ts_event=ts,
+                ts_init=ts
+            ))
+        except Exception:
+            continue
+    if data: catalog.write_data(data)
+def ingest_funding(catalog, root_path):
+    monthly_path = root_path / "monthly" / "fundingRate"
+    if not monthly_path.exists(): 
+        print(f"    [!] No monthly funding rate data found at: {monthly_path}")
+        return
+    print("[-] Ingesting Monthly Funding Rates...")
+    files = sorted(monthly_path.glob("*.csv"))
+    
+    count = 0
+    for file_path in files:
+        try:
+            df = read_csv_robust(file_path)
+            if df.empty: continue
+            
+            if 'calc_time' not in df.columns and len(df.columns) >= 4:
+                df.columns = ['calc_time', 'symbol', 'last_funding_rate', 'funding_interval_hours'] + list(df.columns[4:])
+            data = []
+            for row in df.itertuples(index=False):
+                ts = ms_to_ns(row.calc_time)
+                data.append(BinanceFundingRate(
+                    instrument_id=INSTRUMENT_ID,
+                    rate=float(row.last_funding_rate),
+                    interval_hours=int(row.funding_interval_hours),
+                    ts_event=ts,
+                    ts_init=ts
+                ))
+            if data: 
+                catalog.write_data(data)
+                count += 1
+        except Exception as e:
+            print(f"    [!] Error funding {file_path.name}: {e}")
+    print(f"    Processed {count} funding rate files.")
+# --- MAIN RUNNER ---
+if __name__ == "__main__":
+    # 1. Clean Catalog
+    if CATALOG_PATH.exists():
+        print("[-] Cleaning existing catalog...")
+        shutil.rmtree(CATALOG_PATH)
+    CATALOG_PATH.mkdir(parents=True, exist_ok=True)
+    
+    catalog = ParquetDataCatalog(CATALOG_PATH)
+    
+    print(f"=== PROJECT PHOENIX DATA INGESTION ===")
+    print(f"Root Data Path: {RAW_DATA_ROOT}")
+    
+    if not RAW_DATA_ROOT.exists():
+        print(f"[!] CRITICAL: Raw data path does not exist: {RAW_DATA_ROOT}")
+        exit(1)
+    
+    # 2. Ingest Monthly Funding
+    ingest_funding(catalog, RAW_DATA_ROOT)
+    # 3. Collect and Sort Daily Files
+    daily_root = RAW_DATA_ROOT / "daily"
+    files_by_date = {} 
+    print(f"[-] Scanning daily files in: {daily_root}")
+    
+    # Walk through all subdirectories in daily
+    # We use rglob to find all CSVs, then categorize them by their parent folder
+    found_files_count = 0
+    for file_path in daily_root.rglob("*.csv"):
+        dt = extract_date_regex(file_path.name)
+        if dt:
+            dt_key = dt.strftime("%Y-%m-%d")
+            if dt_key not in files_by_date:
+                files_by_date[dt_key] = []
+            files_by_date[dt_key].append(file_path)
+            found_files_count += 1
+        else:
+            # Optional: Print skipped files to debug
+            # print(f"    [?] Skipping file (no date found): {file_path.name}")
+            pass
+    sorted_dates = sorted(files_by_date.keys())
+    print(f"[-] Found {found_files_count} files across {len(sorted_dates)} days.")
+    # 4. Process Day by Day
+    for date_str in sorted_dates:
+        print(f"    Processing {date_str}...")
+        day_files = files_by_date[date_str]
+        
+        for file_path in day_files:
+            # We determine the file type by its PARENT DIRECTORY name
+            # This matches the structure: daily/aggTrades/file.csv
+            parent_dir = file_path.parent.name
+            
+            if "bookTicker" in parent_dir:
+                ingest_quotes(catalog, file_path)
+            elif "aggTrades" in parent_dir:
+                ingest_agg_trades(catalog, file_path)
+            elif "metrics" in parent_dir:
+                ingest_metrics(catalog, file_path)
+            elif "bookDepth" in parent_dir:
+                ingest_depth(catalog, file_path)
+            elif "klines" in parent_dir: # Matches 'klines_1m' or 'klines'
+                ingest_klines(catalog, file_path)
+            else:
+                print(f"    [?] Unknown category for folder '{parent_dir}': {file_path.name}")
+    print("\n[=] Catalog Generation Complete.")
+```
+```strategy.py
+from decimal import Decimal
+import numpy as np
+from nautilus_trader.trading.strategy import Strategy
+from nautilus_trader.config import StrategyConfig
+from nautilus_trader.model.data import TradeTick, QuoteTick, DataType
+from nautilus_trader.model.enums import OrderSide, TimeInForce, OrderStatus
+from nautilus_trader.model.identifiers import InstrumentId, ClientId
+from nautilus_trader.model.events import OrderFilled, OrderCanceled, OrderRejected
+# Import Custom Components
+from data_loader import BinanceOiData, BinanceDepthData, BinanceFundingRate
+from indicators import LiquidationAlphaFactor, RealizedVarianceCalculator, PhoenixSignal
+class PhoenixStrategyConfig(StrategyConfig, frozen=True):
+    instrument_id: InstrumentId
+    venue_client_id: ClientId
+    
+    # Alpha Parameters
+    vol_bucket_size: int = 1_000_000  # 1M USDT per bucket
+    lpi_entry_threshold: float = 0.75 # Lowered slightly for sensitivity
+    lpi_exit_threshold: float = 0.20
+    oi_z_threshold: float = 1.5       # Regime filter (Crowdedness)
+    
+    # Risk / Kelly Parameters
+    kelly_kappa: float = 0.5          # Half-Kelly for safety
+    expected_alpha: float = 0.0005    # 5bps expected edge
+    jump_risk_variance: float = 0.0001 
+    max_leverage: float = 2.0
+    min_volatility: float = 0.001     # Floor to prevent infinite sizing
+    
+    # Execution
+    maker_offset_ticks: int = 1       # Price improvement
+class PhoenixStrategy(Strategy):
+    def __init__(self, config: PhoenixStrategyConfig):
+        super().__init__(config)
+        self.instrument_id = self.config.instrument_id
+        
+        # Indicators
+        self.alpha_engine = LiquidationAlphaFactor(volume_bucket_size=self.config.vol_bucket_size)
+        self.rv_calc = RealizedVarianceCalculator(window_minutes=60)
+        
+        # State
+        self.current_volatility = 0.005 
+        self.last_best_bid = None
+        self.last_best_ask = None
+        
+        # Order Management
+        self.active_order_id = None
+        self.is_position_open = False
+    def on_start(self):
+        """Subscribe to Data Feeds."""
+        # 1. Standard Ticks
+        self.subscribe_trade_ticks(self.instrument_id)
+        self.subscribe_quote_ticks(self.instrument_id)
+        
+        # 2. Custom Data (Regime & Microstructure)
+        # We must use the specific venue_client_id that routes these custom objects
+        self.subscribe_data(DataType(BinanceOiData), self.config.venue_client_id)
+        self.subscribe_data(DataType(BinanceDepthData), self.config.venue_client_id)
+        self.subscribe_data(DataType(BinanceFundingRate), self.config.venue_client_id)
+        
+        self.log.info(f"Phoenix Strategy Started. Bucket Size: {self.config.vol_bucket_size}")
+    # --- DATA EVENT HANDLERS ---
+    def on_quote_tick(self, tick: QuoteTick):
+        # Cache latest pricing for execution
+        if tick.bid_price.as_double() > 0:
+            self.last_best_bid = tick.bid_price.as_double()
+        if tick.ask_price.as_double() > 0:
+            self.last_best_ask = tick.ask_price.as_double()
+    def on_trade_tick(self, tick: TradeTick):
+        # 1. Update Volatility (Realized Variance)
+        rv = self.rv_calc.update(tick)
+        if rv > 0:
+            self.current_volatility = rv
+        # 2. Update Alpha Engine (Volume Clock)
+        signal = self.alpha_engine.on_trade(tick)
+        
+        # 3. Process Signal if Bucket Completed
+        if signal:
+            self._evaluate_logic(signal)
+    def on_data(self, data):
+        """Route Custom Data to Alpha Engine."""
+        if isinstance(data, BinanceDepthData):
+            self.alpha_engine.on_depth(data)
+        elif isinstance(data, BinanceOiData):
+            self.alpha_engine.on_metrics(data)
+        elif isinstance(data, BinanceFundingRate):
+            # Funding rate can be used here for additional context if needed
+            pass
+    # --- ORDER EVENT HANDLERS ---
+    def on_order_filled(self, event: OrderFilled):
+        """Track position state."""
+        if event.order_id == self.active_order_id:
+            self.active_order_id = None
+            
+        # Check actual net position
+        net_pos = self.portfolio.net_position(self.instrument_id)
+        self.is_position_open = (net_pos != 0)
+        
+        self.log.info(f"[FILLED] {event.order_side} {event.quantity} @ {event.last_px}")
+    def on_order_rejected(self, event: OrderRejected):
+        """Handle rejections (e.g., Post-Only crossed)."""
+        if event.order_id == self.active_order_id:
+            self.log.warning(f"[REJECTED] Order {event.client_order_id}: {event.reason}")
+            self.active_order_id = None
+    def on_order_canceled(self, event: OrderCanceled):
+        if event.order_id == self.active_order_id:
+            self.active_order_id = None
+    # --- CORE LOGIC ---
+    def _evaluate_logic(self, signal: PhoenixSignal):
+        """
+        Decision logic based on LPI and Regime.
+        """
+        if not signal.is_valid:
+            return
+        # 1. Regime Filter (Crowding)
+        # Only trade if Open Interest is historically high (Fragile Market)
+        if signal.oi_zscore < self.config.oi_z_threshold:
+            # If we are in a position, we might want to hold or exit, 
+            # but we won't enter new positions in low-OI regimes.
+            return
+        # 2. Entry Logic (Liquidation Cascade)
+        # High LPI = High Selling + Low Liquidity
+        if signal.lpi > self.config.lpi_entry_threshold:
+            if not self.is_position_open and self.active_order_id is None:
+                self._execute_entry(signal)
+            
+        # 3. Exit Logic (Stabilization)
+        elif signal.lpi < self.config.lpi_exit_threshold:
+            if self.is_position_open:
+                self._execute_exit()
+    def _execute_entry(self, signal: PhoenixSignal):
+        """
+        Calculates Kelly Size and submits Maker Order.
+        """
+        if self.last_best_bid is None or self.last_best_ask is None:
+            return
+        # --- Crypto-Kelly Sizing ---
+        # f* = kappa * (mu / (sigma^2 + jump_risk))
+        
+        # Use max of current vol or a floor to prevent division by near-zero
+        variance = max(self.current_volatility ** 2, self.config.min_volatility)
+        denom = variance + self.config.jump_risk_variance
+        
+        kelly_fraction = self.config.kelly_kappa * (self.config.expected_alpha / denom)
+        
+        # Cap Leverage
+        kelly_fraction = min(kelly_fraction, self.config.max_leverage)
+        
+        if kelly_fraction <= 0:
+            return
+        # Calculate Quantity
+        account = self.portfolio.account(self.config.venue_client_id)
+        if not account:
+            return
+            
+        equity = account.equity_total.as_double()
+        target_notional = equity * kelly_fraction
+        
+        # Use Instrument helper to ensure precision
+        instrument = self.instrument(self.instrument_id)
+        price_dbl = self.last_best_bid
+        
+        # Calculate raw quantity
+        raw_qty = target_notional / price_dbl
+        qty = instrument.make_qty(raw_qty)
+        
+        # Check min quantity
+        if qty < instrument.min_quantity:
+            return
+        # --- Execution: Maker (Post Only) ---
+        # "Chase liquidity, don't cross spread"
+        tick_size = instrument.price_increment.as_double()
+        
+        # Try to bid slightly aggressively but stay passive
+        # Limit = BestBid + Offset. Cap at Ask - Tick (to avoid crossing)
+        limit_price_dbl = min(
+            self.last_best_bid + (tick_size * self.config.maker_offset_ticks), 
+            self.last_best_ask - tick_size
+        )
+        price_obj = instrument.make_price(limit_price_dbl)
+        order = self.order_factory.limit(
+            instrument_id=self.instrument_id,
+            order_side=OrderSide.BUY,
+            quantity=qty,
+            price=price_obj,
+            time_in_force=TimeInForce.GTC,
+            post_only=True, # Critical for Maker Rebate
+        )
+        
+        self.submit_order(order)
+        self.active_order_id = order.client_order_id
+        
+        self.log.info(f"[ENTRY] LPI:{signal.lpi:.2f} | Vol:{self.current_volatility:.4f} | Size:{qty} | Px:{price_obj}")
+    def _execute_exit(self):
+        """
+        Closes position when LPI normalizes.
+        """
+        # Cancel any working orders first
+        if self.active_order_id:
+            self.cancel_order(self.active_order_id)
+        # Close Position
+        self.close_all_positions(self.instrument_id)
+        self.log.info("[EXIT] LPI Normalized. Closing Position.")
+```
+```indicators.py
+import numpy as np
+from collections import deque
+from dataclasses import dataclass
+from typing import Optional
+from nautilus_trader.model.data import TradeTick
+from nautilus_trader.model.enums import AggressorSide
+from nautilus_trader.model.objects import Quantity
+# Import custom data classes defined in data_loader.py
+from data_loader4 import BinanceDepthData, BinanceOiData
+# --- CONSTANTS & CONFIGURATION ---
+DEFAULT_VOL_BUCKET_SIZE = 1_000_000  # 1M USDT Volume Bucket
+OI_WINDOW_SIZE = 30 * 24 * 12        # ~30 Days (assuming 5-min updates)
+MIN_HISTORY_FOR_ZSCORE = 30          # Minimum samples before Z-score is valid
+@dataclass
+class PhoenixSignal:
+    """Output container for the strategy state."""
+    timestamp: int
+    fsi: float          # Forced Selling Intensity
+    vpin: float         # Volume-Synchronized Probability of Informed Trading
+    ldr: float          # Liquidity Depletion Ratio
+    oi_zscore: float    # Open Interest Regime
+    lpi: float          # Composite Liquidation Pressure Index
+    is_valid: bool      # True if all buffers are initialized
+class RollingZScore:
+    """
+    Efficient incremental Z-Score calculator using Welford's algorithm.
+    """
+    def __init__(self, window_size: int):
+        self.window_size = window_size
+        self.values = deque(maxlen=window_size)
+        self.sum = 0.0
+        self.sum_sq = 0.0
+    @property
+    def is_ready(self) -> bool:
+        return len(self.values) >= MIN_HISTORY_FOR_ZSCORE
+    def update(self, value: float) -> float:
+        # 1. Manage Window
+        if len(self.values) == self.window_size:
+            old_val = self.values.popleft()
+            self.sum -= old_val
+            self.sum_sq -= old_val * old_val
+        # 2. Add New Value
+        self.values.append(value)
+        self.sum += value
+        self.sum_sq += value * value
+        # 3. Calculate Stats
+        n = len(self.values)
+        if n < 2:
+            return 0.0
+        mean = self.sum / n
+        # Variance = E[X^2] - (E[X])^2
+        variance = (self.sum_sq / n) - (mean * mean)
+        
+        # Clamp variance to avoid sqrt(negative) due to float precision
+        variance = max(0.0, variance)
+        
+        if variance < 1e-12:
+            return 0.0
+            
+        std = np.sqrt(variance)
+        return (value - mean) / std
+class LiquidationAlphaFactor:
+    """
+    Implements the core 'Liquidation Pressure Index' (LPI) logic.
+    Aggregates Trades (Volume Clock), Depth (LDR), and OI (Regime).
+    """
+    def __init__(self, volume_bucket_size: float = DEFAULT_VOL_BUCKET_SIZE):
+        self.bucket_size = volume_bucket_size
+        
+        # --- Volume Clock State ---
+        self.current_bucket_vol = 0.0
+        self.bucket_buy_vol = 0.0
+        self.bucket_sell_vol = 0.0
+        self.bucket_fsi_numerator = 0.0 # Aggressive Sell Volume
+        
+        # --- Liquidity State (LDR) ---
+        self.prev_depth_notional = None
+        self.current_depth_notional = None
+        self.ldr_value = 1.0 # Default neutral (1.0 = No change)
+        
+        # --- Regime State (OI) ---
+        self.oi_zscorer = RollingZScore(window_size=OI_WINDOW_SIZE)
+        self.current_oi_z = 0.0
+        
+        # --- Signal Normalization ---
+        # We normalize FSI because raw values depend on market activity levels
+        self.fsi_zscorer = RollingZScore(window_size=100) 
+        
+    def on_trade(self, tick: TradeTick) -> Optional[PhoenixSignal]:
+        """
+        Ingests a TradeTick. Returns a Signal ONLY if a Volume Bucket is completed.
+        """
+        price = tick.price.as_double()
+        qty = tick.size.as_double()
+        notional = price * qty
+        
+        # 1. Accumulate Volume
+        self.current_bucket_vol += notional
+        
+        # 2. Classify Flow
+        # In Nautilus, aggressor_side=SELLER means the Taker was selling.
+        is_sell = (tick.aggressor_side == AggressorSide.SELLER)
+        
+        if is_sell:
+            self.bucket_sell_vol += notional
+            self.bucket_fsi_numerator += notional
+        else:
+            self.bucket_buy_vol += notional
+        # 3. Check Volume Clock Threshold
+        if self.current_bucket_vol >= self.bucket_size:
+            return self._finalize_bucket(tick.ts_event)
+            
+        return None
+    def on_depth(self, data: BinanceDepthData):
+        """
+        Updates Liquidity Depletion Ratio (LDR).
+        LDR = Current Depth / Previous Depth
+        """
+        notional = data.notional
+        
+        # Initialize previous if it's the first data point
+        if self.current_depth_notional is None:
+            self.current_depth_notional = notional
+            self.prev_depth_notional = notional
+            return
+        # Shift
+        self.prev_depth_notional = self.current_depth_notional
+        self.current_depth_notional = notional
+        
+        # Calculate LDR
+        if self.prev_depth_notional > 1e-9: # Avoid div/0
+            self.ldr_value = self.current_depth_notional / self.prev_depth_notional
+        else:
+            self.ldr_value = 1.0
+    def on_metrics(self, data: BinanceOiData):
+        """
+        Updates Open Interest Z-Score.
+        """
+        oi = data.open_interest_qty
+        self.current_oi_z = self.oi_zscorer.update(oi)
+    def _finalize_bucket(self, ts) -> PhoenixSignal:
+        """
+        Computes FSI, VPIN, and Composite LPI for the completed bucket.
+        """
+        total_vol = self.current_bucket_vol
+        
+        # Safety check for zero volume (shouldn't happen if logic is correct)
+        if total_vol <= 0:
+            self._reset_bucket()
+            return None
+        # --- 1. FSI (Forced Selling Intensity) ---
+        # Ratio of aggressive selling to total volume
+        raw_fsi = self.bucket_fsi_numerator / total_vol
+        norm_fsi = self.fsi_zscorer.update(raw_fsi)
+        
+        # --- 2. VPIN (Volume-Synchronized Probability of Informed Trading) ---
+        vpin = abs(self.bucket_buy_vol - self.bucket_sell_vol) / total_vol
+        
+        # --- 3. LPI (Liquidation Pressure Index) ---
+        # Logic: High FSI (Selling) + Low LDR (Liquidity Vanishing) = High LPI
+        # We invert LDR (1 - LDR) so that 'Depletion' adds to the score.
+        # If LDR > 1 (Liquidity increasing), stress is 0.
+        liquidity_stress = max(0.0, 1.0 - self.ldr_value)
+        
+        # Sigmoid scaling for FSI Z-score to map it to [0, 1] roughly
+        # We only care about positive FSI shocks (abnormal selling)
+        fsi_component = np.tanh(max(0, norm_fsi)) 
+        
+        # Composite Score
+        lpi = (fsi_component * 0.6) + (liquidity_stress * 0.3) + (vpin * 0.1)
+        # --- 4. Validity Check ---
+        # Signal is valid only if we have initialized depth and OI data
+        valid = (self.current_depth_notional is not None) and (self.oi_zscorer.is_ready)
+        signal = PhoenixSignal(
+            timestamp=ts,
+            fsi=raw_fsi,
+            vpin=vpin,
+            ldr=self.ldr_value,
+            oi_zscore=self.current_oi_z,
+            lpi=lpi,
+            is_valid=valid
+        )
+        self._reset_bucket()
+        return signal
+    def _reset_bucket(self):
+        self.current_bucket_vol = 0.0
+        self.bucket_buy_vol = 0.0
+        self.bucket_sell_vol = 0.0
+        self.bucket_fsi_numerator = 0.0
+class RealizedVarianceCalculator:
+    """
+    Calculates Realized Variance (RV) on high-frequency returns.
+    Used for Volatility Targeting.
+    """
+    def __init__(self, window_minutes=60):
+        self.returns_sq_accum = 0.0
+        self.window_ns = window_minutes * 60 * 1_000_000_000
+        self.history = deque() # (ts, ret_sq)
+        self.last_price = 0.0
+    def update(self, tick: TradeTick) -> float:
+        price = tick.price.as_double()
+        ts = tick.ts_event
+        
+        if self.last_price == 0.0:
+            self.last_price = price
+            return 0.0
+        
+        # Calculate Log Return
+        # Guard against bad data (price <= 0)
+        if price <= 0 or self.last_price <= 0:
+            return 0.0
+        ret = np.log(price / self.last_price)
+        ret_sq = ret * ret
+        self.last_price = price
+        
+        # Add to accumulator
+        self.returns_sq_accum += ret_sq
+        self.history.append((ts, ret_sq))
+        
+        # Prune old observations (Rolling Window)
+        cutoff = ts - self.window_ns
+        while self.history and self.history[0][0] < cutoff:
+            _, old_sq = self.history.popleft()
+            self.returns_sq_accum -= old_sq
+            
+        # RV = Sum(r^2)
+        # Handle floating point drift
+        return np.sqrt(max(0.0, self.returns_sq_accum))
+```
+```run_backtest.py
+import pandas as pd
+from decimal import Decimal
+from pathlib import Path
+from datetime import datetime
+from nautilus_trader.model.identifiers import Symbol, TraderId, Venue, ClientId
+from nautilus_trader.model.objects import Price, Quantity, Money, Currency
+from nautilus_trader.model.enums import AccountType, OmsType
+from nautilus_trader.backtest.engine import BacktestEngine, BacktestEngineConfig
+from nautilus_trader.config import BacktestDataConfig
+from nautilus_trader.persistence.catalog import ParquetDataCatalog
+from nautilus_trader.model.data import TradeTick, QuoteTick
+from nautilus_trader.model.instruments import CryptoPerpetual
+# --- IMPORT STRATEGY & DATA DEFINITIONS ---
+# We assume strategy.py is the file containing the "PhoenixStrategy" class
+# We assume data_loader.py contains the custom data classes and constants
+from strategy2 import PhoenixStrategy, PhoenixStrategyConfig
+from data_loader4 import (
+    BinanceOiData, 
+    BinanceDepthData, 
+    BinanceFundingRate, 
+    INSTRUMENT_ID, 
+    SYMBOL, 
+    VENUE
+)
+# --- CONFIGURATION ---
+CATALOG_PATH = Path("data/catalog")
+# Date Range: Matches the data downloaded in Phase 1
+# Note: Loading 1 year of Tick data requires significant RAM (32GB+). 
+# For testing, you might want to shorten this range (e.g., 1 week).
+START_DT = pd.Timestamp("2023-03-31 00:00:00", tz="UTC")
+END_DT = pd.Timestamp("2024-03-31 23:59:59", tz="UTC")
+INITIAL_CASH = 100_000.0
+def create_btc_perpetual_instrument():
+    """
+    Defines the BTCUSDT Perpetual instrument specs to match Binance.
+    """
+    return CryptoPerpetual(
+        instrument_id=INSTRUMENT_ID,
+        raw_symbol=Symbol(SYMBOL),
+        base_currency=Currency.from_str("BTC"),
+        quote_currency=Currency.from_str("USDT"),
+        settlement_currency=Currency.from_str("USDT"),
+        is_inverse=False,
+        price_precision=2,
+        size_precision=3,
+        price_increment=Price.from_str("0.10"),
+        size_increment=Quantity.from_str("0.001"),
+        max_quantity=Quantity.from_str("1000.000"),
+        min_quantity=Quantity.from_str("0.001"),
+        max_notional=None,
+        min_notional=Money(5.00, Currency.from_str("USDT")),
+        max_price=Price.from_str("1000000.0"),
+        min_price=Price.from_str("0.01"),
+        margin_init=Decimal("0.005"),     # Up to 200x technically, but we use less
+        margin_maint=Decimal("0.004"),
+        maker_fee=Decimal("0.0002"),      # 2bps Maker
+        taker_fee=Decimal("0.0004"),      # 4bps Taker
+        ts_event=0,
+        ts_init=0,
+    )
+def load_data_into_engine(engine, catalog, venue_client_id):
+    """
+    Handles the complexity of loading different data types from the Catalog.
+    """
+    print(f"[-] Loading Data from {START_DT} to {END_DT}...")
+    
+    # 1. Standard Market Data (Ticks)
+    # These are automatically associated with the InstrumentId
+    for data_cls in [TradeTick, QuoteTick]:
+        print(f"    Loading {data_cls.__name__}...")
+        try:
+            # Query the catalog
+            data = catalog.query(
+                data_cls=data_cls,
+                instrument_ids=[str(INSTRUMENT_ID)],
+                start=START_DT,
+                end=END_DT
+            )
+            
+            if not data:
+                print(f"    [!] WARNING: No {data_cls.__name__} found in catalog for this range.")
+            else:
+                engine.add_data(data)
+                print(f"    [+] Loaded {len(data)} {data_cls.__name__} events.")
+                
+        except Exception as e:
+            print(f"    [!] Error loading {data_cls.__name__}: {e}")
+    # 2. Custom Data (LPI Factors)
+    # These MUST be associated with the venue_client_id so the strategy receives them
+    custom_classes = [BinanceOiData, BinanceDepthData, BinanceFundingRate]
+    
+    for data_cls in custom_classes:
+        print(f"    Loading {data_cls.__name__}...")
+        try:
+            # Note: catalog.custom_data() loads ALL data for the ID. 
+            # Filtering by date happens inside the engine or we must filter manually if memory is tight.
+            # Here we rely on the engine to handle the stream.
+            data = catalog.custom_data(
+                data_cls=data_cls,
+                instrument_ids=[str(INSTRUMENT_ID)],
+                start=START_DT,
+                end=END_DT
+            )
+            
+            if not data:
+                print(f"    [!] WARNING: No {data_cls.__name__} found.")
+            else:
+                # CRITICAL: Pass client_id here. 
+                # The strategy subscribes to `subscribe_data(..., client_id)`
+                engine.add_data(data, client_id=venue_client_id)
+                print(f"    [+] Loaded {len(data)} {data_cls.__name__} events.")
+                
+        except Exception as e:
+            print(f"    [!] Error loading {data_cls.__name__}: {e}")
+def run_backtest():
+    print("=== PROJECT PHOENIX BACKTEST ENGINE ===")
+    
+    # 1. Setup Engine
+    engine_config = BacktestEngineConfig(
+        trader_id=TraderId("PHOENIX-BOT-V1"),
+        logging_level="INFO" 
+    )
+    engine = BacktestEngine(config=engine_config)
+    # 2. Setup Venue
+    # We simulate a Binance Futures account
+    venue = Venue(VENUE)
+    venue_client_id = ClientId(VENUE)
+    
+    engine.add_venue(
+        venue=venue, 
+        oms_type=OmsType.NETTING, 
+        account_type=AccountType.MARGIN, 
+        starting_balances=[Money(INITIAL_CASH, Currency.from_str("USDT"))]
+    )
+    # 3. Setup Instrument
+    instrument = create_btc_perpetual_instrument()
+    engine.add_instrument(instrument)
+    # 4. Load Data
+    if not CATALOG_PATH.exists():
+        print(f"[!] Catalog not found at {CATALOG_PATH}. Run data_loader.py first.")
+        return
+    catalog = ParquetDataCatalog(CATALOG_PATH)
+    load_data_into_engine(engine, catalog, venue_client_id)
+    # 5. Setup Strategy
+    strat_config = PhoenixStrategyConfig(
+        instrument_id=INSTRUMENT_ID,
+        venue_client_id=venue_client_id,
+        vol_bucket_size=1_000_000, # 1M USDT Volume Buckets
+        lpi_entry_threshold=0.75,
+        lpi_exit_threshold=0.20,
+        oi_z_threshold=1.5,
+        expected_alpha=0.0005,     # 5bps
+    )
+    
+    strategy = PhoenixStrategy(strat_config)
+    engine.add_strategy(strategy)
+    # 6. Run Simulation
+    print("\n[-] Starting Simulation... (This may take time depending on data size)")
+    engine.run()
+    print("[=] Simulation Complete.")
+    # 7. Reporting
+    print("\n=== PERFORMANCE REPORT ===")
+    account = engine.trader.account(venue_client_id)
+    print(f"Initial Balance: {INITIAL_CASH:.2f} USDT")
+    print(f"Final Balance:   {account.balance_total.as_double():.2f} USDT")
+    print(f"Final Equity:    {account.equity_total.as_double():.2f} USDT")
+    
+    # PnL Calculation
+    pnl = account.equity_total.as_double() - INITIAL_CASH
+    pnl_pct = (pnl / INITIAL_CASH) * 100
+    print(f"Net PnL:         {pnl:.2f} USDT ({pnl_pct:.2f}%)")
+    # Generate detailed report
+    # This returns a pandas DataFrame of positions and orders
+    print("\n[-] Generating Reports...")
+    fills = engine.trader.generate_order_fills_report()
+    
+    if not fills.empty:
+        filename = "backtest_fills.csv"
+        fills.to_csv(filename)
+        print(f"[+] Fills exported to {filename}")
+        print(f"    Total Trades: {len(fills)}")
+    else:
+        print("[!] No trades were executed.")
+if __name__ == "__main__":
+    run_backtest()
+```
+```data_downloader.py
+import os
+import requests
+import zipfile
+import io
+import calendar
+from datetime import date, timedelta
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+# --- CONFIGURATION ---
+SYMBOL = "BTCUSDT"
+# Target Range: 1 Year
+# START_DATE = date(2023, 3, 31)
+START_DATE = date(2023, 5, 16)
+END_DATE = date(2024, 3, 31)
+BASE_URL_FUTURES_DAILY = "https://data.binance.vision/data/futures/um/daily"
+BASE_URL_FUTURES_MONTHLY = "https://data.binance.vision/data/futures/um/monthly"
+OUTPUT_ROOT = Path("data/raw")
+# Categories required for the strategy
+# [CRITICAL UPDATE]: Added 'bookTicker' because the strategy requires QuoteTicks.
+DAILY_TARGETS = [
+    "aggTrades",    # TradeTicks (Volume, FSI)
+    "bookTicker",   # QuoteTicks (Best Bid/Ask for pricing)
+    "metrics",      # Open Interest (Regime)
+    "klines",       # Bars (Context)
+    # "bookDepth"   # Note: Standard bookDepth files are massive snapshots. 
+                    # If you need specific depth metrics, ensure your strategy handles the format.
+                    # We include it here as requested.
+    "bookDepth"
+]
+def get_date_range(start, end):
+    """Yields dates between start and end (inclusive)."""
+    current = start
+    while current <= end:
+        yield current
+        current += timedelta(days=1)
+def get_month_range(start, end):
+    """Yields (year, month) tuples between start and end."""
+    current = start.replace(day=1)
+    while current <= end:
+        yield current.year, current.month
+        # Increment month logic
+        if current.month == 12:
+            current = current.replace(year=current.year + 1, month=1)
+        else:
+            current = current.replace(month=current.month + 1)
+def download_task(args):
+    """Worker function for threading."""
+    base_url, category, date_str, freq, output_root, interval = args
+    
+    # 1. Construct URL and Filename
+    if category == "klines":
+        # Klines URL structure: .../klines/BTCUSDT/1m/BTCUSDT-1m-2023-01-01.zip
+        filename = f"{SYMBOL}-{interval}-{date_str}.zip"
+        url = f"{base_url}/{category}/{SYMBOL}/{interval}/{filename}"
+        save_category = "klines_1m" # Flatten directory structure for easier loading
+    else:
+        # Standard URL structure: .../aggTrades/BTCUSDT/BTCUSDT-aggTrades-2023-01-01.zip
+        filename = f"{SYMBOL}-{category}-{date_str}.zip"
+        url = f"{base_url}/{category}/{SYMBOL}/{filename}"
+        save_category = category
+    # 2. Construct Local Path
+    target_dir = output_root / "futures" / freq / save_category
+    target_dir.mkdir(parents=True, exist_ok=True)
+    
+    zip_path = target_dir / filename
+    csv_filename = filename.replace(".zip", ".csv")
+    csv_path = target_dir / csv_filename
+    # 3. Idempotency Check (Skip if CSV exists)
+    if csv_path.exists():
+        return None 
+    try:
+        # 4. Download
+        resp = requests.get(url, timeout=20)
+        if resp.status_code == 404:
+            return f"[404] Not Found: {url}"
+        resp.raise_for_status()
+        # 5. Extract
+        with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
+            # We extract to the specific target directory
+            z.extractall(target_dir)
+        
+        # Cleanup: Remove zip file if it was saved (in this memory-stream approach, it isn't saved to disk)
+        return f"[OK] {category} {date_str}"
+    except Exception as e:
+        return f"[ERR] {category} {date_str}: {e}"
+if __name__ == "__main__":
+    print(f"=== PROJECT PHOENIX DATA ACQUISITION ===")
+    print(f"Target Range: {START_DATE} to {END_DATE}")
+    print(f"Output Path:  {OUTPUT_ROOT.resolve()}")
+    
+    tasks = []
+    # 1. Monthly Data (Funding Rates)
+    print("[-] Queuing Monthly Data (Funding Rates)...")
+    for year, month in get_month_range(START_DATE, END_DATE):
+        month_str = f"{year}-{month:02d}"
+        tasks.append((BASE_URL_FUTURES_MONTHLY, "fundingRate", month_str, "monthly", OUTPUT_ROOT, None))
+    # 2. Daily Data (Microstructure)
+    print("[-] Queuing Daily Data (AggTrades, Quotes, Metrics, Klines)...")
+    for day in get_date_range(START_DATE, END_DATE):
+        day_str = day.isoformat()
+        for cat in DAILY_TARGETS:
+            interval = "1m" if cat == "klines" else None
+            tasks.append((BASE_URL_FUTURES_DAILY, cat, day_str, "daily", OUTPUT_ROOT, interval))
+    # 3. Execute
+    total_files = len(tasks)
+    print(f"[-] Starting Download of {total_files} files with 16 threads...")
+    
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = list(executor.map(download_task, tasks))
+        
+    # 4. Report Errors
+    errors = [res for res in results if res and ("[ERR]" in res or "[404]" in res)]
+    
+    print(f"\n[=] Download Complete.")
+    if errors:
+        print(f"[!] Encountered {len(errors)} errors (Check connection or date availability):")
+        for err in errors[:10]: print(err)
+        if len(errors) > 10: print("...")
+    else:
+        print("[=] All files downloaded successfully.")
+```
