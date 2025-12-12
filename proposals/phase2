@@ -1,0 +1,2468 @@
+=== FILE: pyproject.toml ===
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phoenix-etl"
+version = "0.1.0"
+description = "Offline binance.vision -> NautilusTrader ParquetDataCatalog ETL (Phase 2 only)"
+requires-python = ">=3.11"
+dependencies = [
+  "PyYAML>=6.0.1",
+  "pytest>=8.0.0",
+]
+
+[project.scripts]
+phoenix-etl = "phoenix_etl.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/__init__.py ===
+__all__ = [
+    "__version__",
+]
+
+__version__ = "0.1.0"
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/nautilus_compat.py ===
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass(frozen=True)
+class NautilusImports:
+    InstrumentId: Any
+    TradeId: Any
+    Price: Any
+    Quantity: Any
+    AggressorSide: Any
+    TradeTick: Any
+    QuoteTick: Any
+    Bar: Any
+    BarType: Any
+    Data: Any
+    customdataclass: Any
+    ParquetDataCatalog: Any
+
+
+def load_nautilus_imports() -> NautilusImports:
+    # InstrumentId, TradeId
+    try:
+        from nautilus_trader.model.identifiers import InstrumentId  # type: ignore
+    except Exception:
+        from nautilus_trader.model import InstrumentId  # type: ignore
+
+    try:
+        from nautilus_trader.model.identifiers import TradeId  # type: ignore
+    except Exception:
+        from nautilus_trader.model import TradeId  # type: ignore
+
+    # Objects
+    from nautilus_trader.model.objects import Price, Quantity  # type: ignore
+
+    # Enums
+    from nautilus_trader.model.enums import AggressorSide  # type: ignore
+
+    # Data model objects
+    from nautilus_trader.model.data import Bar, BarType, QuoteTick, TradeTick  # type: ignore
+
+    # Data base class
+    try:
+        from nautilus_trader.core.data import Data  # type: ignore
+    except Exception:
+        from nautilus_trader.core import Data  # type: ignore
+
+    # customdataclass
+    from nautilus_trader.model.custom import customdataclass  # type: ignore
+
+    # ParquetDataCatalog
+    try:
+        from nautilus_trader.persistence.catalog.parquet import ParquetDataCatalog  # type: ignore
+    except Exception:
+        from nautilus_trader.persistence.catalog import ParquetDataCatalog  # type: ignore
+
+    return NautilusImports(
+        InstrumentId=InstrumentId,
+        TradeId=TradeId,
+        Price=Price,
+        Quantity=Quantity,
+        AggressorSide=AggressorSide,
+        TradeTick=TradeTick,
+        QuoteTick=QuoteTick,
+        Bar=Bar,
+        BarType=BarType,
+        Data=Data,
+        customdataclass=customdataclass,
+        ParquetDataCatalog=ParquetDataCatalog,
+    )
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/time_utils.py ===
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Final
+
+NANOS_PER_MILLI: Final[int] = 1_000_000
+NANOS_PER_SECOND: Final[int] = 1_000_000_000
+
+
+class TimestampParseError(ValueError):
+    pass
+
+
+def ms_to_ns(ms: str | int) -> int:
+    """
+    Convert epoch milliseconds -> epoch nanoseconds.
+
+    Accepts:
+      - int
+      - numeric str (possibly with decimals, but will be rejected if not integral)
+    """
+    if isinstance(ms, int):
+        return ms * NANOS_PER_MILLI
+    s = ms.strip()
+    if not s:
+        raise TimestampParseError("empty ms timestamp")
+    # Binance timestamps are integers in ms; be strict to avoid accidental float locale issues.
+    if s.isdigit() or (s[0] == "-" and s[1:].isdigit()):
+        return int(s) * NANOS_PER_MILLI
+    raise TimestampParseError(f"non-integer ms timestamp: {ms!r}")
+
+
+def iso_to_ns(s: str) -> int:
+    """
+    Parse ISO-like timestamps into UTC epoch nanoseconds.
+
+    Supports common binance.vision formats observed:
+      - "2024-03-30 00:05:00"
+      - "2024-03-30 00:05:00.123"
+      - "2024-03-30T00:05:00"
+      - "2024-03-30T00:05:00.123"
+      - with optional "Z" suffix
+      - with optional timezone offsets
+    """
+    raw = s.strip()
+    if not raw:
+        raise TimestampParseError("empty ISO timestamp")
+    # Normalize separators
+    raw = raw.replace("Z", "+00:00")
+    if " " in raw and "T" not in raw:
+        raw = raw.replace(" ", "T", 1)
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError as e:
+        raise TimestampParseError(f"invalid ISO timestamp: {s!r}") from e
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return int(dt.timestamp() * NANOS_PER_SECOND)
+
+
+def parse_ts_to_ns(value: str | int) -> int:
+    """
+    Parse either:
+      - epoch ms (int or numeric str)
+      - ISO string
+    into epoch nanoseconds.
+    """
+    if isinstance(value, int):
+        # heuristic: assume ms (Binance typically uses ms)
+        return ms_to_ns(value)
+    s = str(value).strip()
+    if not s:
+        raise TimestampParseError("empty timestamp")
+    # digits => ms
+    if s.isdigit() or (s[0] == "-" and s[1:].isdigit()):
+        return ms_to_ns(s)
+    return iso_to_ns(s)
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/path_utils.py ===
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable
+
+DATE_DAILY_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
+DATE_MONTHLY_RE = re.compile(r"(\d{4})-(\d{2})(?:\D|$)")
+
+
+@dataclass(frozen=True)
+class ParsedPath:
+    path: Path
+    universe: str  # "futures" | "spot"
+    period: str  # "daily" | "monthly"
+    dataset: str  # "aggTrades" | "bookTicker" | ...
+    symbol: str
+    date_key: str  # "YYYY-MM-DD" or "YYYY-MM"
+
+
+def _extract_symbol_and_date_from_filename(filename: str) -> tuple[str, str | None, str | None]:
+    """
+    Returns:
+      (symbol, daily_date_key, monthly_date_key)
+    """
+    # Patterns:
+    # - BTCUSDT-aggTrades-2023-05-16.csv
+    # - BTCUSDT-bookTicker-2023-05-16.csv
+    # - BTCUSDT-1m-2023-05-16.csv
+    # - BTCUSDT-fundingRate-2023-05.csv
+    # - BTCUSDT-aggTrades-2023-05.csv
+    parts = filename.split("-")
+    if not parts:
+        return "", None, None
+    symbol = parts[0]
+
+    m_daily = DATE_DAILY_RE.search(filename)
+    if m_daily:
+        y, mo, d = m_daily.groups()
+        return symbol, f"{y}-{mo}-{d}", None
+
+    # Monthly: match YYYY-MM near end
+    # Ensure we don't misread daily as monthly (daily handled above).
+    m_month = re.search(r"(\d{4})-(\d{2})\.csv$", filename)
+    if m_month:
+        y, mo = m_month.groups()
+        return symbol, None, f"{y}-{mo}"
+
+    return symbol, None, None
+
+
+def iter_candidate_csv_files(roots: Iterable[Path]) -> Iterable[Path]:
+    for root in roots:
+        if not root.exists():
+            continue
+        yield from root.rglob("*.csv")
+
+
+def classify_binance_vision_path(path: Path) -> ParsedPath | None:
+    """
+    Supports multiple on-disk layouts:
+      - Phase1: data/raw/futures/{daily,monthly}/<dataset>/*.csv
+      - Observed: future_data/{daily_data,monthly_data}/<dataset>/*.csv
+      - Spot: spot_data/{daily,monthly}/<dataset>/*.csv
+
+    Dataset is inferred from parent directory name.
+    """
+    # Determine universe and period from directory components
+    parts = [p.lower() for p in path.parts]
+    universe = None
+    period = None
+
+    # universe detection
+    if "spot_data" in parts or "spot" in parts and "spot_data" in str(path.parent):
+        universe = "spot"
+    if "future_data" in parts or "futures" in parts or "data" in parts and "raw" in parts and "futures" in parts:
+        # Prefer futures if both triggers
+        if universe is None:
+            universe = "futures"
+        elif universe != "spot":
+            universe = "futures"
+
+    if universe is None:
+        # Attempt by folder name near file
+        p = str(path).lower()
+        if "/spot_data/" in p:
+            universe = "spot"
+        elif "/future_data/" in p or "/data/raw/futures/" in p:
+            universe = "futures"
+        else:
+            return None
+
+    # period detection
+    if "daily" in parts:
+        period = "daily"
+    elif "daily_data" in parts:
+        period = "daily"
+    elif "monthly" in parts:
+        period = "monthly"
+    elif "monthly_data" in parts:
+        period = "monthly"
+    else:
+        return None
+
+    dataset = path.parent.name  # e.g. aggTrades, bookTicker, klines_1m, metrics
+    symbol, daily_key, monthly_key = _extract_symbol_and_date_from_filename(path.name)
+    if not symbol:
+        return None
+
+    date_key = None
+    if period == "daily":
+        date_key = daily_key
+    else:
+        date_key = monthly_key
+
+    if date_key is None:
+        return None
+
+    return ParsedPath(
+        path=path,
+        universe=universe,
+        period=period,
+        dataset=dataset,
+        symbol=symbol,
+        date_key=date_key,
+    )
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/inventory.py ===
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable
+
+from phoenix_etl.path_utils import ParsedPath, classify_binance_vision_path, iter_candidate_csv_files
+
+
+@dataclass(frozen=True)
+class InventoryRow:
+    universe: str
+    period: str
+    dataset: str
+    symbol: str
+    date_key: str
+    path: str
+    size_bytes: int
+    mtime_ns: int
+
+
+def build_inventory(roots: Iterable[Path]) -> list[InventoryRow]:
+    rows: list[InventoryRow] = []
+    for p in iter_candidate_csv_files(roots):
+        parsed: ParsedPath | None = classify_binance_vision_path(p)
+        if parsed is None:
+            continue
+        st = p.stat()
+        rows.append(
+            InventoryRow(
+                universe=parsed.universe,
+                period=parsed.period,
+                dataset=parsed.dataset,
+                symbol=parsed.symbol,
+                date_key=parsed.date_key,
+                path=str(p),
+                size_bytes=st.st_size,
+                mtime_ns=getattr(st, "st_mtime_ns", int(st.st_mtime * 1_000_000_000)),
+            ),
+        )
+
+    # Deterministic ordering
+    rows.sort(key=lambda r: (r.universe, r.period, r.dataset, r.symbol, r.date_key, r.path))
+    return rows
+
+
+def filter_inventory(
+    rows: list[InventoryRow],
+    universe: str,
+    datasets: set[str],
+    symbols: set[str] | None,
+    start_date_key: str | None,
+    end_date_key: str | None,
+) -> list[InventoryRow]:
+    """
+    For daily: date_key is "YYYY-MM-DD" lexicographically sortable.
+    For monthly: "YYYY-MM".
+    """
+    out: list[InventoryRow] = []
+    for r in rows:
+        if r.universe != universe:
+            continue
+        if r.dataset not in datasets:
+            continue
+        if symbols is not None and r.symbol not in symbols:
+            continue
+
+        if start_date_key is not None and r.date_key < start_date_key:
+            continue
+        if end_date_key is not None and r.date_key > end_date_key:
+            continue
+
+        out.append(r)
+
+    out.sort(key=lambda r: (r.period, r.dataset, r.symbol, r.date_key, r.path))
+    return out
+
+
+def default_roots_from_args(raw_roots: list[str]) -> list[Path]:
+    roots: list[Path] = []
+    for s in raw_roots:
+        p = Path(os.path.expanduser(s)).resolve()
+        roots.append(p)
+    return roots
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/manifest.py ===
+from __future__ import annotations
+
+import hashlib
+import json
+import platform
+import sys
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from phoenix_etl import __version__
+
+
+def _now_utc_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _stable_signature_for_file(path: str, size_bytes: int, mtime_ns: int) -> str:
+    """
+    Checksum-like signature without reading file contents (fast, deterministic given same stat data).
+    """
+    h = hashlib.sha256()
+    h.update(path.encode("utf-8"))
+    h.update(b"|")
+    h.update(str(size_bytes).encode("utf-8"))
+    h.update(b"|")
+    h.update(str(mtime_ns).encode("utf-8"))
+    return h.hexdigest()
+
+
+@dataclass
+class FileIngestStats:
+    path: str
+    universe: str
+    period: str
+    dataset: str
+    symbol: str
+    date_key: str
+    size_bytes: int
+    mtime_ns: int
+    signature: str
+    rows_read: int = 0
+    events_written: int = 0
+    parse_errors: int = 0
+    dedup_dropped: int = 0
+    ts_min: int | None = None
+    ts_max: int | None = None
+
+
+@dataclass
+class DatasetStats:
+    dataset: str
+    events_written: int = 0
+    parse_errors: int = 0
+    dedup_dropped: int = 0
+    ts_min: int | None = None
+    ts_max: int | None = None
+
+
+@dataclass
+class Manifest:
+    ingestion_version: str = __version__
+    created_utc: str = field(default_factory=_now_utc_iso)
+    raw_roots: list[str] = field(default_factory=list)
+    catalog_path: str = ""
+    venue: str = "BINANCE"
+    universe: str = "futures"
+    symbols: list[str] = field(default_factory=list)
+    datasets: list[str] = field(default_factory=list)
+    start_date_key: str | None = None
+    end_date_key: str | None = None
+    environment: dict[str, Any] = field(default_factory=dict)
+    by_file: list[FileIngestStats] = field(default_factory=list)
+    by_dataset: dict[str, DatasetStats] = field(default_factory=dict)
+
+    def finalize(self) -> None:
+        self.environment = {
+            "python": sys.version,
+            "platform": platform.platform(),
+        }
+
+        # Aggregate dataset stats
+        agg: dict[str, DatasetStats] = {}
+        for f in self.by_file:
+            ds = agg.get(f.dataset)
+            if ds is None:
+                ds = DatasetStats(dataset=f.dataset)
+                agg[f.dataset] = ds
+            ds.events_written += f.events_written
+            ds.parse_errors += f.parse_errors
+            ds.dedup_dropped += f.dedup_dropped
+            if f.ts_min is not None:
+                ds.ts_min = f.ts_min if ds.ts_min is None else min(ds.ts_min, f.ts_min)
+            if f.ts_max is not None:
+                ds.ts_max = f.ts_max if ds.ts_max is None else max(ds.ts_max, f.ts_max)
+
+        self.by_dataset = agg
+
+    def to_json(self) -> str:
+        self.finalize()
+        obj = asdict(self)
+        # by_dataset dataclass dict keys are fine
+        return json.dumps(obj, indent=2, sort_keys=True)
+
+    def write(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(self.to_json(), encoding="utf-8")
+
+
+def build_file_stats_base(
+    *,
+    path: str,
+    universe: str,
+    period: str,
+    dataset: str,
+    symbol: str,
+    date_key: str,
+    size_bytes: int,
+    mtime_ns: int,
+) -> FileIngestStats:
+    return FileIngestStats(
+        path=path,
+        universe=universe,
+        period=period,
+        dataset=dataset,
+        symbol=symbol,
+        date_key=date_key,
+        size_bytes=size_bytes,
+        mtime_ns=mtime_ns,
+        signature=_stable_signature_for_file(path, size_bytes, mtime_ns),
+    )
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/config.py ===
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal
+
+import yaml
+
+
+@dataclass(frozen=True)
+class EtlConfig:
+    raw_roots: list[str]
+    catalog_path: str
+    manifest_path: str
+    validation_report_path: str
+
+    universe: Literal["futures", "spot"] = "futures"
+    venue: str = "BINANCE"
+    symbols: list[str] | None = None
+
+    # Datasets to ingest (folder names as on disk)
+    datasets: list[str] = None  # type: ignore[assignment]
+
+    # Date keys:
+    # daily: "YYYY-MM-DD"
+    # monthly: "YYYY-MM"
+    start_date_key: str | None = None
+    end_date_key: str | None = None
+
+    # Parsing / write
+    batch_size: int = 50_000
+    strict: bool = False  # if True, raise on parse errors instead of counting and skipping
+
+    # Determinism
+    sort_within_batch: bool = True
+
+    @staticmethod
+    def default_datasets_for_universe(universe: str) -> list[str]:
+        if universe == "futures":
+            return [
+                "aggTrades",
+                "bookTicker",
+                "klines_1m",
+                "metrics",
+                "bookDepth",
+                "fundingRate",  # monthly
+            ]
+        return [
+            "aggTrades",
+            "trades",
+            "klines",
+        ]
+
+
+def load_config(path: Path) -> EtlConfig:
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("config must be a YAML mapping")
+
+    universe = data.get("universe", "futures")
+    datasets = data.get("datasets")
+    if datasets is None:
+        datasets = EtlConfig.default_datasets_for_universe(universe)
+
+    return EtlConfig(
+        raw_roots=list(data["raw_roots"]),
+        catalog_path=str(data["catalog_path"]),
+        manifest_path=str(data["manifest_path"]),
+        validation_report_path=str(data.get("validation_report_path", "validation_report.md")),
+        universe=universe,
+        venue=str(data.get("venue", "BINANCE")),
+        symbols=data.get("symbols"),
+        datasets=list(datasets),
+        start_date_key=data.get("start_date_key"),
+        end_date_key=data.get("end_date_key"),
+        batch_size=int(data.get("batch_size", 50_000)),
+        strict=bool(data.get("strict", False)),
+        sort_within_batch=bool(data.get("sort_within_batch", True)),
+    )
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/custom_data.py ===
+from __future__ import annotations
+
+from phoenix_etl.nautilus_compat import load_nautilus_imports
+
+N = load_nautilus_imports()
+Data = N.Data
+customdataclass = N.customdataclass
+InstrumentId = N.InstrumentId
+
+
+@customdataclass
+class BinanceFundingRate(Data):
+    instrument_id: InstrumentId
+    rate_str: str
+    interval_hours: int
+
+
+@customdataclass
+class BinanceOiMetrics(Data):
+    instrument_id: InstrumentId
+    symbol: str
+    sum_open_interest_str: str
+    sum_open_interest_value_str: str
+    count_toptrader_long_short_ratio_str: str | None = None
+    sum_toptrader_long_short_ratio_str: str | None = None
+    count_long_short_ratio_str: str | None = None
+    sum_taker_long_short_vol_ratio_str: str | None = None
+
+
+@customdataclass
+class BinanceBookDepthPct(Data):
+    instrument_id: InstrumentId
+    percentage_str: str
+    depth_str: str
+    notional_str: str
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/parsers/__init__.py ===
+from phoenix_etl.parsers.registry import ParserRegistry
+
+__all__ = ["ParserRegistry"]
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/parsers/base.py ===
+from __future__ import annotations
+
+import csv
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable, Iterable, Iterator
+
+from phoenix_etl.nautilus_compat import load_nautilus_imports
+from phoenix_etl.time_utils import TimestampParseError, parse_ts_to_ns
+
+N = load_nautilus_imports()
+
+
+@dataclass(frozen=True)
+class ParseResult:
+    events: list[Any]
+    rows_read: int
+    events_emitted: int
+    parse_errors: int
+    dedup_dropped: int
+    ts_min: int | None
+    ts_max: int | None
+
+
+class CsvParseError(ValueError):
+    pass
+
+
+def _looks_like_header(row0: list[str]) -> bool:
+    if not row0:
+        return False
+    # If any field contains letters or underscores, treat as header
+    for c in row0:
+        s = c.strip()
+        if not s:
+            continue
+        if any(ch.isalpha() for ch in s) or "_" in s:
+            return True
+    return False
+
+
+def iter_csv_rows(path: Path) -> Iterator[list[str]]:
+    with path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.reader(f)
+        for row in reader:
+            if not row:
+                continue
+            yield row
+
+
+def iter_csv_dict_rows(path: Path) -> Iterator[dict[str, str]]:
+    with path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row is None:
+                continue
+            # Normalize to str values
+            out: dict[str, str] = {}
+            for k, v in row.items():
+                if k is None:
+                    continue
+                out[str(k).strip()] = "" if v is None else str(v).strip()
+            yield out
+
+
+def detect_header(path: Path) -> bool:
+    it = iter_csv_rows(path)
+    try:
+        row0 = next(it)
+    except StopIteration:
+        return False
+    return _looks_like_header(row0)
+
+
+def parse_bool(val: str) -> bool:
+    s = val.strip().lower()
+    if s in ("true", "t", "1", "yes", "y"):
+        return True
+    if s in ("false", "f", "0", "no", "n"):
+        return False
+    raise CsvParseError(f"invalid boolean: {val!r}")
+
+
+def safe_parse_ts(val: str | int, strict: bool) -> tuple[int | None, int]:
+    try:
+        return parse_ts_to_ns(val), 0
+    except (TimestampParseError, ValueError):
+        if strict:
+            raise
+        return None, 1
+
+
+def finalize_batch(
+    events: list[Any],
+    *,
+    sort_key: Callable[[Any], tuple],
+    sort_within_batch: bool,
+) -> list[Any]:
+    if not events:
+        return events
+    if sort_within_batch:
+        events.sort(key=sort_key)
+    return events
+
+
+class BaseParser:
+    dataset: str
+
+    def parse_file(
+        self,
+        path: Path,
+        instrument_id: Any,
+        *,
+        strict: bool,
+        sort_within_batch: bool,
+        batch_size: int,
+    ) -> Iterable[ParseResult]:
+        raise NotImplementedError
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/parsers/futures_agg_trades.py ===
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Iterable
+
+from phoenix_etl.nautilus_compat import load_nautilus_imports
+from phoenix_etl.parsers.base import BaseParser, ParseResult, detect_header, finalize_batch, parse_bool, safe_parse_ts
+
+N = load_nautilus_imports()
+
+
+class FuturesAggTradesParser(BaseParser):
+    dataset = "aggTrades"
+
+    def parse_file(
+        self,
+        path: Path,
+        instrument_id: Any,
+        *,
+        strict: bool,
+        sort_within_batch: bool,
+        batch_size: int,
+    ) -> Iterable[ParseResult]:
+        TradeTick = N.TradeTick
+        TradeId = N.TradeId
+        Price = N.Price
+        Quantity = N.Quantity
+        AggressorSide = N.AggressorSide
+
+        rows_read = 0
+        errors = 0
+        dedup = 0
+        ts_min = None
+        ts_max = None
+
+        last_trade_id: str | None = None
+        events: list[Any] = []
+
+        if detect_header(path):
+            import csv
+
+            with path.open("r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    rows_read += 1
+                    try:
+                        # Normalize keys (case-insensitive)
+                        r = {str(k).strip().lower(): ("" if v is None else str(v).strip()) for k, v in row.items()}
+                        trade_id = r.get("agg_trade_id") or r.get("aggtradeid") or r.get("a") or r.get("id")
+                        price_s = r.get("price") or r.get("p")
+                        qty_s = r.get("quantity") or r.get("qty") or r.get("q")
+                        ts_ms = r.get("transact_time") or r.get("transacttime") or r.get("timestamp") or r.get("t")
+                        is_buyer_maker_s = r.get("is_buyer_maker") or r.get("isbuyermaker") or r.get("m")
+
+                        if trade_id is None or price_s is None or qty_s is None or ts_ms is None or is_buyer_maker_s is None:
+                            raise ValueError("missing required columns")
+
+                        ts_event, e = safe_parse_ts(ts_ms, strict)
+                        errors += e
+                        if ts_event is None:
+                            continue
+
+                        # Dedup assumption: sorted by agg_trade_id; drop adjacent duplicates
+                        if last_trade_id is not None and str(trade_id) == last_trade_id:
+                            dedup += 1
+                            continue
+                        last_trade_id = str(trade_id)
+
+                        is_buyer_maker = parse_bool(is_buyer_maker_s)
+                        side = AggressorSide.SELLER if is_buyer_maker else AggressorSide.BUYER
+
+                        tick = TradeTick(
+                            instrument_id=instrument_id,
+                            price=Price.from_str(price_s),
+                            size=Quantity.from_str(qty_s),
+                            aggressor_side=side,
+                            trade_id=TradeId(str(trade_id)),
+                            ts_event=ts_event,
+                            ts_init=ts_event,
+                        )
+                        events.append(tick)
+                        ts_min = ts_event if ts_min is None else min(ts_min, ts_event)
+                        ts_max = ts_event if ts_max is None else max(ts_max, ts_event)
+
+                        if len(events) >= batch_size:
+                            batch = finalize_batch(
+                                events,
+                                sort_key=lambda x: (x.ts_event, str(x.trade_id)),
+                                sort_within_batch=sort_within_batch,
+                            )
+                            yield ParseResult(
+                                events=batch,
+                                rows_read=rows_read,
+                                events_emitted=len(batch),
+                                parse_errors=errors,
+                                dedup_dropped=dedup,
+                                dedup_dropped=dedup,
+                                ts_min=ts_min,
+                                ts_max=ts_max,
+                            )
+                            events = []
+                    except Exception:
+                        if strict:
+                            raise
+                        errors += 1
+                        continue
+        else:
+            for row in _iter_rows_no_header(path):
+                rows_read += 1
+                try:
+                    # Positional schema:
+                    # aggTradeId, price, quantity, firstTradeId, lastTradeId, timestamp, isBuyerMaker, (isBestMatch)
+                    trade_id, price_s, qty_s, *_rest = row
+                    ts_ms = row[5]
+                    is_buyer_maker_s = row[6]
+
+                    ts_event, e = safe_parse_ts(ts_ms, strict)
+                    errors += e
+                    if ts_event is None:
+                        continue
+
+                    if last_trade_id is not None and str(trade_id) == last_trade_id:
+                        dedup += 1
+                        continue
+                    last_trade_id = str(trade_id)
+
+                    is_buyer_maker = parse_bool(is_buyer_maker_s)
+                    side = AggressorSide.SELLER if is_buyer_maker else AggressorSide.BUYER
+
+                    tick = TradeTick(
+                        instrument_id=instrument_id,
+                        price=Price.from_str(str(price_s).strip()),
+                        size=Quantity.from_str(str(qty_s).strip()),
+                        aggressor_side=side,
+                        trade_id=TradeId(str(trade_id).strip()),
+                        ts_event=ts_event,
+                        ts_init=ts_event,
+                    )
+                    events.append(tick)
+                    ts_min = ts_event if ts_min is None else min(ts_min, ts_event)
+                    ts_max = ts_event if ts_max is None else max(ts_max, ts_event)
+
+                    if len(events) >= batch_size:
+                        batch = finalize_batch(
+                            events,
+                            sort_key=lambda x: (x.ts_event, str(x.trade_id)),
+                            sort_within_batch=sort_within_batch,
+                        )
+                        yield ParseResult(
+                            events=batch,
+                            rows_read=rows_read,
+                            events_emitted=len(batch),
+                            parse_errors=errors,
+                            dedup_dropped=dedup,
+                            ts_min=ts_min,
+                            ts_max=ts_max,
+                        )
+                        events = []
+                except Exception:
+                    if strict:
+                        raise
+                    errors += 1
+                    continue
+
+        if events:
+            batch = finalize_batch(
+                events,
+                sort_key=lambda x: (x.ts_event, str(x.trade_id)),
+                sort_within_batch=sort_within_batch,
+            )
+            yield ParseResult(
+                events=batch,
+                rows_read=rows_read,
+                events_emitted=len(batch),
+                parse_errors=errors,
+                dedup_dropped=dedup,
+                ts_min=ts_min,
+                ts_max=ts_max,
+            )
+
+
+def _iter_rows_no_header(path: Path):
+    import csv
+
+    with path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.reader(f)
+        for row in reader:
+            if not row:
+                continue
+            yield row
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/parsers/futures_book_ticker.py ===
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Iterable
+
+from phoenix_etl.nautilus_compat import load_nautilus_imports
+from phoenix_etl.parsers.base import BaseParser, ParseResult, detect_header, finalize_batch, safe_parse_ts
+
+N = load_nautilus_imports()
+
+
+class FuturesBookTickerParser(BaseParser):
+    dataset = "bookTicker"
+
+    def parse_file(
+        self,
+        path: Path,
+        instrument_id: Any,
+        *,
+        strict: bool,
+        sort_within_batch: bool,
+        batch_size: int,
+    ) -> Iterable[ParseResult]:
+        QuoteTick = N.QuoteTick
+        Price = N.Price
+        Quantity = N.Quantity
+
+        rows_read = 0
+        errors = 0
+        dedup = 0
+        ts_min = None
+        ts_max = None
+
+        # Dedup by (event_time, update_id) adjacent duplicates (files are typically ordered)
+        last_key: tuple[int, str] | None = None
+        events: list[Any] = []
+
+        import csv
+
+        if detect_header(path):
+            with path.open("r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    rows_read += 1
+                    try:
+                        r = {str(k).strip().lower(): ("" if v is None else str(v).strip()) for k, v in row.items()}
+                        update_id = r.get("update_id") or r.get("updateid") or r.get("u")
+                        bid_p = r.get("best_bid_price") or r.get("bid_price") or r.get("bidprice") or r.get("b")
+                        bid_q = r.get("best_bid_qty") or r.get("bid_qty") or r.get("bidqty") or r.get("bq")
+                        ask_p = r.get("best_ask_price") or r.get("ask_price") or r.get("askprice") or r.get("a")
+                        ask_q = r.get("best_ask_qty") or r.get("ask_qty") or r.get("askqty") or r.get("aq")
+                        event_time = r.get("event_time") or r.get("eventtime") or r.get("e")
+                        transact_time = r.get("transaction_time") or r.get("transactiontime") or r.get("t")
+
+                        # Choose ts_event: event_time if present else transact_time
+                        ts_field = event_time if (event_time is not None and event_time != "") else transact_time
+                        if update_id is None or bid_p is None or bid_q is None or ask_p is None or ask_q is None or ts_field is None:
+                            raise ValueError("missing required columns")
+
+                        ts_event, e = safe_parse_ts(ts_field, strict)
+                        errors += e
+                        if ts_event is None:
+                            continue
+
+                        key = (ts_event, str(update_id))
+                        if last_key is not None and key == last_key:
+                            dedup += 1
+                            continue
+                        last_key = key
+
+                        tick = QuoteTick(
+                            instrument_id=instrument_id,
+                            bid_price=Price.from_str(bid_p),
+                            ask_price=Price.from_str(ask_p),
+                            bid_size=Quantity.from_str(bid_q),
+                            ask_size=Quantity.from_str(ask_q),
+                            ts_event=ts_event,
+                            ts_init=ts_event,
+                        )
+                        events.append(tick)
+                        ts_min = ts_event if ts_min is None else min(ts_min, ts_event)
+                        ts_max = ts_event if ts_max is None else max(ts_max, ts_event)
+
+                        if len(events) >= batch_size:
+                            batch = finalize_batch(
+                                events,
+                                sort_key=lambda x: (x.ts_event, str(x.bid_price), str(x.ask_price)),
+                                sort_within_batch=sort_within_batch,
+                            )
+                            yield ParseResult(
+                                events=batch,
+                                rows_read=rows_read,
+                                events_emitted=len(batch),
+                                parse_errors=errors,
+                                dedup_dropped=dedup,
+                                ts_min=ts_min,
+                                ts_max=ts_max,
+                            )
+                            events = []
+                    except Exception:
+                        if strict:
+                            raise
+                        errors += 1
+                        continue
+        else:
+            # Headerless not expected for futures bookTicker; still attempt positional:
+            # update_id, bid_p, bid_q, ask_p, ask_q, transaction_time, event_time
+            with path.open("r", encoding="utf-8", newline="") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if not row:
+                        continue
+                    rows_read += 1
+                    try:
+                        if len(row) < 6:
+                            raise ValueError("row too short")
+                        update_id = row[0]
+                        bid_p, bid_q, ask_p, ask_q = row[1], row[2], row[3], row[4]
+                        transact_time = row[5]
+                        event_time = row[6] if len(row) > 6 else ""
+                        ts_field = event_time.strip() or transact_time.strip()
+
+                        ts_event, e = safe_parse_ts(ts_field, strict)
+                        errors += e
+                        if ts_event is None:
+                            continue
+
+                        key = (ts_event, str(update_id))
+                        if last_key is not None and key == last_key:
+                            dedup += 1
+                            continue
+                        last_key = key
+
+                        tick = QuoteTick(
+                            instrument_id=instrument_id,
+                            bid_price=Price.from_str(str(bid_p).strip()),
+                            ask_price=Price.from_str(str(ask_p).strip()),
+                            bid_size=Quantity.from_str(str(bid_q).strip()),
+                            ask_size=Quantity.from_str(str(ask_q).strip()),
+                            ts_event=ts_event,
+                            ts_init=ts_event,
+                        )
+                        events.append(tick)
+                        ts_min = ts_event if ts_min is None else min(ts_min, ts_event)
+                        ts_max = ts_event if ts_max is None else max(ts_max, ts_event)
+
+                        if len(events) >= batch_size:
+                            batch = finalize_batch(
+                                events,
+                                sort_key=lambda x: (x.ts_event, str(x.bid_price), str(x.ask_price)),
+                                sort_within_batch=sort_within_batch,
+                            )
+                            yield ParseResult(
+                                events=batch,
+                                rows_read=rows_read,
+                                events_emitted=len(batch),
+                                parse_errors=errors,
+                                dedup_dropped=dedup,
+                                ts_min=ts_min,
+                                ts_max=ts_max,
+                            )
+                            events = []
+                    except Exception:
+                        if strict:
+                            raise
+                        errors += 1
+                        continue
+
+        if events:
+            batch = finalize_batch(
+                events,
+                sort_key=lambda x: (x.ts_event, str(x.bid_price), str(x.ask_price)),
+                sort_within_batch=sort_within_batch,
+            )
+            yield ParseResult(
+                events=batch,
+                rows_read=rows_read,
+                events_emitted=len(batch),
+                parse_errors=errors,
+                dedup_dropped=dedup,
+                ts_min=ts_min,
+                ts_max=ts_max,
+            )
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/parsers/futures_klines_1m.py ===
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Iterable
+
+from phoenix_etl.nautilus_compat import load_nautilus_imports
+from phoenix_etl.parsers.base import BaseParser, ParseResult, detect_header, finalize_batch, safe_parse_ts
+
+N = load_nautilus_imports()
+
+
+class FuturesKlines1mParser(BaseParser):
+    dataset = "klines_1m"
+
+    def parse_file(
+        self,
+        path: Path,
+        instrument_id: Any,
+        *,
+        strict: bool,
+        sort_within_batch: bool,
+        batch_size: int,
+    ) -> Iterable[ParseResult]:
+        Bar = N.Bar
+        BarType = N.BarType
+        Price = N.Price
+        Quantity = N.Quantity
+
+        # External 1m LAST bars
+        bar_type = BarType.from_str(f"{instrument_id}-1-MINUTE-LAST-EXTERNAL")
+
+        rows_read = 0
+        errors = 0
+        dedup = 0
+        ts_min = None
+        ts_max = None
+
+        last_open_time: int | None = None
+        events: list[Any] = []
+
+        import csv
+
+        if detect_header(path):
+            with path.open("r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    rows_read += 1
+                    try:
+                        r = {str(k).strip().lower(): ("" if v is None else str(v).strip()) for k, v in row.items()}
+                        open_time = r.get("open_time") or r.get("opentime") or r.get("t")
+                        o = r.get("open") or r.get("o")
+                        h = r.get("high") or r.get("h")
+                        l = r.get("low") or r.get("l")
+                        c = r.get("close") or r.get("c")
+                        v = r.get("volume") or r.get("v")
+
+                        if open_time is None or o is None or h is None or l is None or c is None or v is None:
+                            raise ValueError("missing required columns")
+
+                        ts_event, e = safe_parse_ts(open_time, strict)
+                        errors += e
+                        if ts_event is None:
+                            continue
+
+                        if last_open_time is not None and ts_event == last_open_time:
+                            dedup += 1
+                            continue
+                        last_open_time = ts_event
+
+                        bar = Bar(
+                            bar_type=bar_type,
+                            open=Price.from_str(o),
+                            high=Price.from_str(h),
+                            low=Price.from_str(l),
+                            close=Price.from_str(c),
+                            volume=Quantity.from_str(v),
+                            ts_event=ts_event,
+                            ts_init=ts_event,
+                        )
+                        events.append(bar)
+                        ts_min = ts_event if ts_min is None else min(ts_min, ts_event)
+                        ts_max = ts_event if ts_max is None else max(ts_max, ts_event)
+
+                        if len(events) >= batch_size:
+                            batch = finalize_batch(
+                                events,
+                                sort_key=lambda x: (x.ts_event,),
+                                sort_within_batch=sort_within_batch,
+                            )
+                            yield ParseResult(
+                                events=batch,
+                                rows_read=rows_read,
+                                events_emitted=len(batch),
+                                parse_errors=errors,
+                                dedup_dropped=dedup,
+                                ts_min=ts_min,
+                                ts_max=ts_max,
+                            )
+                            events = []
+                    except Exception:
+                        if strict:
+                            raise
+                        errors += 1
+                        continue
+        else:
+            # Positional schema (standard kline):
+            # open_time, open, high, low, close, volume, close_time, quote_volume, count, ...
+            with path.open("r", encoding="utf-8", newline="") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if not row:
+                        continue
+                    rows_read += 1
+                    try:
+                        if len(row) < 6:
+                            raise ValueError("row too short")
+                        open_time, o, h, l, c, v = row[0], row[1], row[2], row[3], row[4], row[5]
+
+                        ts_event, e = safe_parse_ts(open_time, strict)
+                        errors += e
+                        if ts_event is None:
+                            continue
+
+                        if last_open_time is not None and ts_event == last_open_time:
+                            dedup += 1
+                            continue
+                        last_open_time = ts_event
+
+                        bar = Bar(
+                            bar_type=bar_type,
+                            open=Price.from_str(o.strip()),
+                            high=Price.from_str(h.strip()),
+                            low=Price.from_str(l.strip()),
+                            close=Price.from_str(c.strip()),
+                            volume=Quantity.from_str(v.strip()),
+                            ts_event=ts_event,
+                            ts_init=ts_event,
+                        )
+                        events.append(bar)
+                        ts_min = ts_event if ts_min is None else min(ts_min, ts_event)
+                        ts_max = ts_event if ts_max is None else max(ts_max, ts_event)
+
+                        if len(events) >= batch_size:
+                            batch = finalize_batch(
+                                events,
+                                sort_key=lambda x: (x.ts_event,),
+                                sort_within_batch=sort_within_batch,
+                            )
+                            yield ParseResult(
+                                events=batch,
+                                rows_read=rows_read,
+                                events_emitted=len(batch),
+                                parse_errors=errors,
+                                dedup_dropped=dedup,
+                                ts_min=ts_min,
+                                ts_max=ts_max,
+                            )
+                            events = []
+                    except Exception:
+                        if strict:
+                            raise
+                        errors += 1
+                        continue
+
+        if events:
+            batch = finalize_batch(
+                events,
+                sort_key=lambda x: (x.ts_event,),
+                sort_within_batch=sort_within_batch,
+            )
+            yield ParseResult(
+                events=batch,
+                rows_read=rows_read,
+                events_emitted=len(batch),
+                parse_errors=errors,
+                dedup_dropped=dedup,
+                ts_min=ts_min,
+                ts_max=ts_max,
+            )
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/parsers/futures_metrics.py ===
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Iterable
+
+from phoenix_etl.custom_data import BinanceOiMetrics
+from phoenix_etl.nautilus_compat import load_nautilus_imports
+from phoenix_etl.parsers.base import BaseParser, ParseResult, detect_header, finalize_batch, safe_parse_ts
+
+N = load_nautilus_imports()
+
+
+class FuturesMetricsParser(BaseParser):
+    dataset = "metrics"
+
+    def parse_file(
+        self,
+        path: Path,
+        instrument_id: Any,
+        *,
+        strict: bool,
+        sort_within_batch: bool,
+        batch_size: int,
+    ) -> Iterable[ParseResult]:
+        rows_read = 0
+        errors = 0
+        dedup = 0
+        ts_min = None
+        ts_max = None
+
+        last_ts: int | None = None
+        events: list[Any] = []
+
+        import csv
+
+        if detect_header(path):
+            with path.open("r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    rows_read += 1
+                    try:
+                        r = {str(k).strip().lower(): ("" if v is None else str(v).strip()) for k, v in row.items()}
+                        create_time = r.get("create_time") or r.get("createtime")
+                        symbol = r.get("symbol") or ""
+                        oi_qty = r.get("sum_open_interest") or r.get("sumopeninterest")
+                        oi_val = r.get("sum_open_interest_value") or r.get("sumopeninterestvalue")
+
+                        if create_time is None or oi_qty is None or oi_val is None:
+                            raise ValueError("missing required columns")
+
+                        ts_event, e = safe_parse_ts(create_time, strict)
+                        errors += e
+                        if ts_event is None:
+                            continue
+
+                        # Dedup adjacent by timestamp
+                        if last_ts is not None and ts_event == last_ts:
+                            dedup += 1
+                            continue
+                        last_ts = ts_event
+
+                        data = BinanceOiMetrics(
+                            instrument_id=instrument_id,
+                            symbol=symbol,
+                            sum_open_interest_str=str(oi_qty),
+                            sum_open_interest_value_str=str(oi_val),
+                            count_toptrader_long_short_ratio_str=r.get("count_toptrader_long_short_ratio"),
+                            sum_toptrader_long_short_ratio_str=r.get("sum_toptrader_long_short_ratio"),
+                            count_long_short_ratio_str=r.get("count_long_short_ratio"),
+                            sum_taker_long_short_vol_ratio_str=r.get("sum_taker_long_short_vol_ratio"),
+                            ts_event=ts_event,
+                            ts_init=ts_event,
+                        )
+                        events.append(data)
+                        ts_min = ts_event if ts_min is None else min(ts_min, ts_event)
+                        ts_max = ts_event if ts_max is None else max(ts_max, ts_event)
+
+                        if len(events) >= batch_size:
+                            batch = finalize_batch(
+                                events,
+                                sort_key=lambda x: (x.ts_event,),
+                                sort_within_batch=sort_within_batch,
+                            )
+                            yield ParseResult(
+                                events=batch,
+                                rows_read=rows_read,
+                                events_emitted=len(batch),
+                                parse_errors=errors,
+                                dedup_dropped=dedup,
+                                ts_min=ts_min,
+                                ts_max=ts_max,
+                            )
+                            events = []
+                    except Exception:
+                        if strict:
+                            raise
+                        errors += 1
+                        continue
+        else:
+            # Headerless fallback: assume first columns:
+            # create_time, symbol, sum_open_interest, sum_open_interest_value, ...
+            with path.open("r", encoding="utf-8", newline="") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if not row:
+                        continue
+                    rows_read += 1
+                    try:
+                        if len(row) < 4:
+                            raise ValueError("row too short")
+                        create_time, symbol, oi_qty, oi_val = row[0], row[1], row[2], row[3]
+
+                        ts_event, e = safe_parse_ts(create_time, strict)
+                        errors += e
+                        if ts_event is None:
+                            continue
+
+                        if last_ts is not None and ts_event == last_ts:
+                            dedup += 1
+                            continue
+                        last_ts = ts_event
+
+                        data = BinanceOiMetrics(
+                            instrument_id=instrument_id,
+                            symbol=str(symbol),
+                            sum_open_interest_str=str(oi_qty),
+                            sum_open_interest_value_str=str(oi_val),
+                            ts_event=ts_event,
+                            ts_init=ts_event,
+                        )
+                        events.append(data)
+                        ts_min = ts_event if ts_min is None else min(ts_min, ts_event)
+                        ts_max = ts_event if ts_max is None else max(ts_max, ts_event)
+
+                        if len(events) >= batch_size:
+                            batch = finalize_batch(
+                                events,
+                                sort_key=lambda x: (x.ts_event,),
+                                sort_within_batch=sort_within_batch,
+                            )
+                            yield ParseResult(
+                                events=batch,
+                                rows_read=rows_read,
+                                events_emitted=len(batch),
+                                parse_errors=errors,
+                                dedup_dropped=dedup,
+                                ts_min=ts_min,
+                                ts_max=ts_max,
+                            )
+                            events = []
+                    except Exception:
+                        if strict:
+                            raise
+                        errors += 1
+                        continue
+
+        if events:
+            batch = finalize_batch(
+                events,
+                sort_key=lambda x: (x.ts_event,),
+                sort_within_batch=sort_within_batch,
+            )
+            yield ParseResult(
+                events=batch,
+                rows_read=rows_read,
+                events_emitted=len(batch),
+                parse_errors=errors,
+                dedup_dropped=dedup,
+                ts_min=ts_min,
+                ts_max=ts_max,
+            )
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/parsers/futures_book_depth_pct.py ===
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Iterable
+
+from phoenix_etl.custom_data import BinanceBookDepthPct
+from phoenix_etl.nautilus_compat import load_nautilus_imports
+from phoenix_etl.parsers.base import BaseParser, ParseResult, detect_header, finalize_batch, safe_parse_ts
+
+N = load_nautilus_imports()
+
+
+class FuturesBookDepthPctParser(BaseParser):
+    dataset = "bookDepth"
+
+    def parse_file(
+        self,
+        path: Path,
+        instrument_id: Any,
+        *,
+        strict: bool,
+        sort_within_batch: bool,
+        batch_size: int,
+    ) -> Iterable[ParseResult]:
+        rows_read = 0
+        errors = 0
+        dedup = 0
+        ts_min = None
+        ts_max = None
+
+        last_key: tuple[int, str] | None = None
+        events: list[Any] = []
+
+        import csv
+
+        if detect_header(path):
+            with path.open("r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    rows_read += 1
+                    try:
+                        r = {str(k).strip().lower(): ("" if v is None else str(v).strip()) for k, v in row.items()}
+                        ts_raw = r.get("timestamp") or r.get("time") or r.get("t")
+                        pct = r.get("percentage") or r.get("pct")
+                        depth = r.get("depth") or r.get("quantity") or r.get("qty")
+                        notional = r.get("notional") or r.get("quote") or r.get("value")
+
+                        if ts_raw is None or pct is None or depth is None or notional is None:
+                            raise ValueError("missing required columns")
+
+                        ts_event, e = safe_parse_ts(ts_raw, strict)
+                        errors += e
+                        if ts_event is None:
+                            continue
+
+                        key = (ts_event, str(pct))
+                        if last_key is not None and key == last_key:
+                            dedup += 1
+                            continue
+                        last_key = key
+
+                        data = BinanceBookDepthPct(
+                            instrument_id=instrument_id,
+                            percentage_str=str(pct),
+                            depth_str=str(depth),
+                            notional_str=str(notional),
+                            ts_event=ts_event,
+                            ts_init=ts_event,
+                        )
+                        events.append(data)
+                        ts_min = ts_event if ts_min is None else min(ts_min, ts_event)
+                        ts_max = ts_event if ts_max is None else max(ts_max, ts_event)
+
+                        if len(events) >= batch_size:
+                            batch = finalize_batch(
+                                events,
+                                sort_key=lambda x: (x.ts_event, x.percentage_str),
+                                sort_within_batch=sort_within_batch,
+                            )
+                            yield ParseResult(
+                                events=batch,
+                                rows_read=rows_read,
+                                events_emitted=len(batch),
+                                parse_errors=errors,
+                                dedup_dropped=dedup,
+                                ts_min=ts_min,
+                                ts_max=ts_max,
+                            )
+                            events = []
+                    except Exception:
+                        if strict:
+                            raise
+                        errors += 1
+                        continue
+        else:
+            # Headerless not expected for this custom percent-depth; attempt positional:
+            # timestamp, percentage, depth, notional
+            with path.open("r", encoding="utf-8", newline="") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if not row:
+                        continue
+                    rows_read += 1
+                    try:
+                        if len(row) < 4:
+                            raise ValueError("row too short")
+                        ts_raw, pct, depth, notional = row[0], row[1], row[2], row[3]
+                        ts_event, e = safe_parse_ts(ts_raw, strict)
+                        errors += e
+                        if ts_event is None:
+                            continue
+
+                        key = (ts_event, str(pct))
+                        if last_key is not None and key == last_key:
+                            dedup += 1
+                            continue
+                        last_key = key
+
+                        data = BinanceBookDepthPct(
+                            instrument_id=instrument_id,
+                            percentage_str=str(pct).strip(),
+                            depth_str=str(depth).strip(),
+                            notional_str=str(notional).strip(),
+                            ts_event=ts_event,
+                            ts_init=ts_event,
+                        )
+                        events.append(data)
+                        ts_min = ts_event if ts_min is None else min(ts_min, ts_event)
+                        ts_max = ts_event if ts_max is None else max(ts_max, ts_event)
+
+                        if len(events) >= batch_size:
+                            batch = finalize_batch(
+                                events,
+                                sort_key=lambda x: (x.ts_event, x.percentage_str),
+                                sort_within_batch=sort_within_batch,
+                            )
+                            yield ParseResult(
+                                events=batch,
+                                rows_read=rows_read,
+                                events_emitted=len(batch),
+                                parse_errors=errors,
+                                dedup_dropped=dedup,
+                                ts_min=ts_min,
+                                ts_max=ts_max,
+                            )
+                            events = []
+                    except Exception:
+                        if strict:
+                            raise
+                        errors += 1
+                        continue
+
+        if events:
+            batch = finalize_batch(
+                events,
+                sort_key=lambda x: (x.ts_event, x.percentage_str),
+                sort_within_batch=sort_within_batch,
+            )
+            yield ParseResult(
+                events=batch,
+                rows_read=rows_read,
+                events_emitted=len(batch),
+                parse_errors=errors,
+                dedup_dropped=dedup,
+                ts_min=ts_min,
+                ts_max=ts_max,
+            )
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/parsers/futures_funding_rate.py ===
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Iterable
+
+from phoenix_etl.custom_data import BinanceFundingRate
+from phoenix_etl.parsers.base import BaseParser, ParseResult, detect_header, finalize_batch, safe_parse_ts
+
+
+class FuturesFundingRateParser(BaseParser):
+    dataset = "fundingRate"
+
+    def parse_file(
+        self,
+        path: Path,
+        instrument_id: Any,
+        *,
+        strict: bool,
+        sort_within_batch: bool,
+        batch_size: int,
+    ) -> Iterable[ParseResult]:
+        rows_read = 0
+        errors = 0
+        dedup = 0
+        ts_min = None
+        ts_max = None
+
+        last_ts: int | None = None
+        events: list[Any] = []
+
+        import csv
+
+        if detect_header(path):
+            with path.open("r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    rows_read += 1
+                    try:
+                        r = {str(k).strip().lower(): ("" if v is None else str(v).strip()) for k, v in row.items()}
+                        calc_time = r.get("calc_time") or r.get("calctime") or r.get("time")
+                        interval = r.get("funding_interval_hours") or r.get("fundingintervalhours") or r.get("interval")
+                        rate = r.get("last_funding_rate") or r.get("lastfundingrate") or r.get("rate")
+
+                        if calc_time is None or interval is None or rate is None:
+                            raise ValueError("missing required columns")
+
+                        ts_event, e = safe_parse_ts(calc_time, strict)
+                        errors += e
+                        if ts_event is None:
+                            continue
+
+                        if last_ts is not None and ts_event == last_ts:
+                            dedup += 1
+                            continue
+                        last_ts = ts_event
+
+                        data = BinanceFundingRate(
+                            instrument_id=instrument_id,
+                            rate_str=str(rate),
+                            interval_hours=int(str(interval)),
+                            ts_event=ts_event,
+                            ts_init=ts_event,
+                        )
+                        events.append(data)
+                        ts_min = ts_event if ts_min is None else min(ts_min, ts_event)
+                        ts_max = ts_event if ts_max is None else max(ts_max, ts_event)
+
+                        if len(events) >= batch_size:
+                            batch = finalize_batch(
+                                events,
+                                sort_key=lambda x: (x.ts_event,),
+                                sort_within_batch=sort_within_batch,
+                            )
+                            yield ParseResult(
+                                events=batch,
+                                rows_read=rows_read,
+                                events_emitted=len(batch),
+                                parse_errors=errors,
+                                dedup_dropped=dedup,
+                                ts_min=ts_min,
+                                ts_max=ts_max,
+                            )
+                            events = []
+                    except Exception:
+                        if strict:
+                            raise
+                        errors += 1
+                        continue
+        else:
+            # Positional fallback: calc_time, funding_interval_hours, last_funding_rate
+            with path.open("r", encoding="utf-8", newline="") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if not row:
+                        continue
+                    rows_read += 1
+                    try:
+                        if len(row) < 3:
+                            raise ValueError("row too short")
+                        calc_time, interval, rate = row[0], row[1], row[2]
+                        ts_event, e = safe_parse_ts(calc_time, strict)
+                        errors += e
+                        if ts_event is None:
+                            continue
+
+                        if last_ts is not None and ts_event == last_ts:
+                            dedup += 1
+                            continue
+                        last_ts = ts_event
+
+                        data = BinanceFundingRate(
+                            instrument_id=instrument_id,
+                            rate_str=str(rate).strip(),
+                            interval_hours=int(str(interval).strip()),
+                            ts_event=ts_event,
+                            ts_init=ts_event,
+                        )
+                        events.append(data)
+                        ts_min = ts_event if ts_min is None else min(ts_min, ts_event)
+                        ts_max = ts_event if ts_max is None else max(ts_max, ts_event)
+
+                        if len(events) >= batch_size:
+                            batch = finalize_batch(
+                                events,
+                                sort_key=lambda x: (x.ts_event,),
+                                sort_within_batch=sort_within_batch,
+                            )
+                            yield ParseResult(
+                                events=batch,
+                                rows_read=rows_read,
+                                events_emitted=len(batch),
+                                parse_errors=errors,
+                                dedup_dropped=dedup,
+                                ts_min=ts_min,
+                                ts_max=ts_max,
+                            )
+                            events = []
+                    except Exception:
+                        if strict:
+                            raise
+                        errors += 1
+                        continue
+
+        if events:
+            batch = finalize_batch(
+                events,
+                sort_key=lambda x: (x.ts_event,),
+                sort_within_batch=sort_within_batch,
+            )
+            yield ParseResult(
+                events=batch,
+                rows_read=rows_read,
+                events_emitted=len(batch),
+                parse_errors=errors,
+                dedup_dropped=dedup,
+                ts_min=ts_min,
+                ts_max=ts_max,
+            )
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/parsers/registry.py ===
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from phoenix_etl.parsers.futures_agg_trades import FuturesAggTradesParser
+from phoenix_etl.parsers.futures_book_depth_pct import FuturesBookDepthPctParser
+from phoenix_etl.parsers.futures_book_ticker import FuturesBookTickerParser
+from phoenix_etl.parsers.futures_funding_rate import FuturesFundingRateParser
+from phoenix_etl.parsers.futures_klines_1m import FuturesKlines1mParser
+from phoenix_etl.parsers.futures_metrics import FuturesMetricsParser
+
+
+@dataclass(frozen=True)
+class ParserRegistry:
+    """
+    Parser lookup by dataset folder name (as seen on disk).
+    """
+    universe: str
+
+    def get(self, dataset: str) -> Any:
+        if self.universe == "futures":
+            match dataset:
+                case "aggTrades":
+                    return FuturesAggTradesParser()
+                case "bookTicker":
+                    return FuturesBookTickerParser()
+                case "klines_1m" | "klines":
+                    # futures layout uses klines_1m in Phase1; observed may be "klines"
+                    return FuturesKlines1mParser()
+                case "metrics":
+                    return FuturesMetricsParser()
+                case "bookDepth":
+                    return FuturesBookDepthPctParser()
+                case "fundingRate":
+                    return FuturesFundingRateParser()
+                case _:
+                    raise KeyError(f"no parser for dataset={dataset!r} universe={self.universe!r}")
+
+        raise KeyError(f"unsupported universe: {self.universe!r}")
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/etl.py ===
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from phoenix_etl.config import EtlConfig
+from phoenix_etl.inventory import build_inventory, default_roots_from_args, filter_inventory
+from phoenix_etl.manifest import Manifest, build_file_stats_base
+from phoenix_etl.nautilus_compat import load_nautilus_imports
+from phoenix_etl.parsers import ParserRegistry
+
+N = load_nautilus_imports()
+
+
+@dataclass(frozen=True)
+class EtlOutputs:
+    catalog_path: Path
+    manifest_path: Path
+    validation_report_path: Path
+
+
+def instrument_id_for(symbol: str, venue: str) -> object:
+    return N.InstrumentId.from_str(f"{symbol}.{venue}")
+
+
+def run_etl(cfg: EtlConfig) -> EtlOutputs:
+    roots = default_roots_from_args(cfg.raw_roots)
+    inv = build_inventory(roots)
+
+    datasets = set(cfg.datasets)
+    symbols = set(cfg.symbols) if cfg.symbols else None
+
+    # Date filtering:
+    # For futures we ingest daily datasets by YYYY-MM-DD and fundingRate monthly YYYY-MM
+    # We accept start/end date keys; for monthly datasets you should pass YYYY-MM.
+    rows = filter_inventory(
+        inv,
+        universe=cfg.universe,
+        datasets=datasets,
+        symbols=symbols,
+        start_date_key=cfg.start_date_key,
+        end_date_key=cfg.end_date_key,
+    )
+
+    catalog_path = Path(cfg.catalog_path).expanduser().resolve()
+    catalog_path.mkdir(parents=True, exist_ok=True)
+    catalog = N.ParquetDataCatalog(str(catalog_path))
+
+    manifest = Manifest(
+        raw_roots=[str(p) for p in roots],
+        catalog_path=str(catalog_path),
+        venue=cfg.venue,
+        universe=cfg.universe,
+        symbols=sorted({r.symbol for r in rows}),
+        datasets=sorted(datasets),
+        start_date_key=cfg.start_date_key,
+        end_date_key=cfg.end_date_key,
+    )
+
+    registry = ParserRegistry(universe=cfg.universe)
+
+    # Deterministic processing order: period -> dataset -> symbol -> date_key -> path
+    rows.sort(key=lambda r: (r.period, r.dataset, r.symbol, r.date_key, r.path))
+
+    for r in rows:
+        parser = registry.get(r.dataset)
+        inst_id = instrument_id_for(r.symbol, cfg.venue)
+
+        fstats = build_file_stats_base(
+            path=r.path,
+            universe=r.universe,
+            period=r.period,
+            dataset=r.dataset,
+            symbol=r.symbol,
+            date_key=r.date_key,
+            size_bytes=r.size_bytes,
+            mtime_ns=r.mtime_ns,
+        )
+
+        for result in parser.parse_file(
+            Path(r.path),
+            inst_id,
+            strict=cfg.strict,
+            sort_within_batch=cfg.sort_within_batch,
+            batch_size=cfg.batch_size,
+        ):
+            # Write batch to catalog
+            if result.events:
+                catalog.write_data(result.events)
+
+            # Update per-file stats using most recent batch cumulative counters
+            fstats.rows_read = max(fstats.rows_read, result.rows_read)
+            fstats.events_written += result.events_emitted
+            fstats.parse_errors = result.parse_errors
+            fstats.dedup_dropped = result.dedup_dropped
+            if result.ts_min is not None:
+                fstats.ts_min = result.ts_min if fstats.ts_min is None else min(fstats.ts_min, result.ts_min)
+            if result.ts_max is not None:
+                fstats.ts_max = result.ts_max if fstats.ts_max is None else max(fstats.ts_max, result.ts_max)
+
+        manifest.by_file.append(fstats)
+
+    # Write manifest + validation report
+    manifest_path = Path(cfg.manifest_path).expanduser().resolve()
+    manifest.write(manifest_path)
+
+    validation_path = Path(cfg.validation_report_path).expanduser().resolve()
+    validation_path.parent.mkdir(parents=True, exist_ok=True)
+    validation_path.write_text(_build_validation_report_text(manifest, catalog_path), encoding="utf-8")
+
+    return EtlOutputs(
+        catalog_path=catalog_path,
+        manifest_path=manifest_path,
+        validation_report_path=validation_path,
+    )
+
+
+def _build_validation_report_text(manifest: Manifest, catalog_path: Path) -> str:
+    # Avoid relying on unverified catalog query APIs; use list_data_types() which is shown in examples.
+    lines: list[str] = []
+    lines.append("# Validation Report")
+    lines.append("")
+    lines.append(f"- catalog_path: `{catalog_path}`")
+    lines.append(f"- ingestion_version: `{manifest.ingestion_version}`")
+    lines.append(f"- created_utc: `{manifest.created_utc}`")
+    lines.append(f"- universe: `{manifest.universe}`")
+    lines.append(f"- venue: `{manifest.venue}`")
+    lines.append("")
+
+    # Data types present
+    try:
+        catalog = N.ParquetDataCatalog(str(catalog_path))
+        data_types = catalog.list_data_types()
+        lines.append("## Catalog data types")
+        lines.append("")
+        lines.append("```")
+        lines.append(str(data_types))
+        lines.append("```")
+        lines.append("")
+    except Exception as e:
+        lines.append("## Catalog data types")
+        lines.append("")
+        lines.append(f"FAILED to list_data_types(): {e!r}")
+        lines.append("")
+
+    # Totals by dataset from manifest
+    manifest.finalize()
+    lines.append("## Totals by dataset (manifest)")
+    lines.append("")
+    lines.append("| dataset | events_written | parse_errors | dedup_dropped | ts_min | ts_max |")
+    lines.append("|---|---:|---:|---:|---:|---:|")
+    for ds_name in sorted(manifest.by_dataset.keys()):
+        ds = manifest.by_dataset[ds_name]
+        lines.append(
+            f"| {ds.dataset} | {ds.events_written} | {ds.parse_errors} | {ds.dedup_dropped} | {ds.ts_min or ''} | {ds.ts_max or ''} |",
+        )
+    lines.append("")
+
+    # Per-file summary (top N)
+    lines.append("## Per-file summary (first 50 files)")
+    lines.append("")
+    lines.append("| dataset | symbol | date_key | rows_read | events_written | parse_errors | dedup_dropped | ts_min | ts_max | path |")
+    lines.append("|---|---|---|---:|---:|---:|---:|---:|---:|---|")
+    for f in manifest.by_file[:50]:
+        lines.append(
+            f"| {f.dataset} | {f.symbol} | {f.date_key} | {f.rows_read} | {f.events_written} | {f.parse_errors} | {f.dedup_dropped} | {f.ts_min or ''} | {f.ts_max or ''} | {f.path} |",
+        )
+    lines.append("")
+
+    return "\n".join(lines)
+
+=== END FILE ===
+
+=== FILE: src/phoenix_etl/cli.py ===
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from phoenix_etl.config import load_config
+from phoenix_etl.etl import run_etl
+from phoenix_etl.inventory import build_inventory, default_roots_from_args
+from phoenix_etl.path_utils import classify_binance_vision_path
+
+
+def _cmd_scan(args: argparse.Namespace) -> int:
+    roots = default_roots_from_args(args.raw_root)
+    inv = build_inventory(roots)
+    if args.output:
+        out = Path(args.output).expanduser().resolve()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps([r.__dict__ for r in inv], indent=2, sort_keys=True), encoding="utf-8")
+    else:
+        print(json.dumps([r.__dict__ for r in inv[: min(len(inv), 50)]], indent=2, sort_keys=True))
+        if len(inv) > 50:
+            print(f"... ({len(inv)} total rows)")
+    return 0
+
+
+def _cmd_classify(args: argparse.Namespace) -> int:
+    p = Path(args.path).expanduser().resolve()
+    parsed = classify_binance_vision_path(p)
+    if parsed is None:
+        print("null")
+        return 1
+    print(json.dumps(parsed.__dict__ | {"path": str(parsed.path)}, indent=2, sort_keys=True))
+    return 0
+
+
+def _cmd_ingest(args: argparse.Namespace) -> int:
+    cfg = load_config(Path(args.config).expanduser().resolve())
+    out = run_etl(cfg)
+    print(str(out.manifest_path))
+    print(str(out.validation_report_path))
+    print(str(out.catalog_path))
+    return 0
+
+
+def main(argv: list[str] | None = None) -> None:
+    ap = argparse.ArgumentParser(prog="phoenix-etl")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    scan = sub.add_parser("scan", help="Scan raw roots and output inventory (json)")
+    scan.add_argument("--raw-root", action="append", required=True, help="Raw data root (repeatable)")
+    scan.add_argument("--output", default=None, help="Output JSON path (optional)")
+    scan.set_defaults(func=_cmd_scan)
+
+    classify = sub.add_parser("classify", help="Classify a single CSV path into universe/period/dataset")
+    classify.add_argument("path", help="Path to a csv file")
+    classify.set_defaults(func=_cmd_classify)
+
+    ingest = sub.add_parser("ingest", help="Run ETL from YAML config")
+    ingest.add_argument("--config", required=True, help="Path to etl_config.yaml")
+    ingest.set_defaults(func=_cmd_ingest)
+
+    ns = ap.parse_args(argv)
+    raise SystemExit(ns.func(ns))
+
+=== END FILE ===
+
+=== FILE: configs/etl_config_example.yaml ===
+raw_roots:
+  # You can list multiple roots; scanner will auto-detect futures/spot layouts.
+  - ./data/raw/futures
+  - ./future_data
+  - ./spot_data
+
+catalog_path: ./data/catalog/phoenix_um_btcusdt
+manifest_path: ./data/catalog/phoenix_um_btcusdt/manifest.json
+validation_report_path: ./data/catalog/phoenix_um_btcusdt/validation_report.md
+
+universe: futures
+venue: BINANCE
+
+# For Phase 2 acceptance baseline
+symbols: ["BTCUSDT"]
+start_date_key: "2023-05-16"
+end_date_key: "2024-03-31"
+
+datasets:
+  - aggTrades
+  - bookTicker
+  - klines_1m
+  - metrics
+  - bookDepth
+  - fundingRate
+
+batch_size: 50000
+strict: false
+sort_within_batch: true
+
+=== END FILE ===
+
+=== FILE: tests/conftest.py ===
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture()
+def tmp_data_root(tmp_path: Path) -> Path:
+    return tmp_path / "raw"
+
+
+@pytest.fixture()
+def tmp_catalog_root(tmp_path: Path) -> Path:
+    return tmp_path / "catalog"
+
+=== END FILE ===
+
+=== FILE: tests/test_time_utils.py ===
+from __future__ import annotations
+
+import pytest
+
+from phoenix_etl.time_utils import iso_to_ns, ms_to_ns, parse_ts_to_ns
+
+
+def test_ms_to_ns_int():
+    assert ms_to_ns(1) == 1_000_000
+
+
+def test_ms_to_ns_str():
+    assert ms_to_ns("1711756800000") == 1711756800000 * 1_000_000
+
+
+def test_ms_to_ns_reject_float_str():
+    with pytest.raises(Exception):
+        ms_to_ns("1711756800000.0")
+
+
+def test_iso_to_ns_basic():
+    ns = iso_to_ns("2024-03-30 00:05:00")
+    assert isinstance(ns, int)
+    assert ns > 0
+
+
+def test_parse_ts_to_ns_ms_str():
+    ns = parse_ts_to_ns("1709251200000")
+    assert ns == 1709251200000 * 1_000_000
+
+
+def test_parse_ts_to_ns_iso():
+    ns = parse_ts_to_ns("2024-03-30T00:05:00Z")
+    assert isinstance(ns, int)
+    assert ns > 0
+
+=== END FILE ===
+
+=== FILE: tests/test_path_classification.py ===
+from __future__ import annotations
+
+from pathlib import Path
+
+from phoenix_etl.path_utils import classify_binance_vision_path
+
+
+def test_classify_futures_daily_aggtrades():
+    p = Path("data/raw/futures/daily/aggTrades/BTCUSDT-aggTrades-2023-05-16.csv")
+    parsed = classify_binance_vision_path(p)
+    assert parsed is not None
+    assert parsed.universe == "futures"
+    assert parsed.period == "daily"
+    assert parsed.dataset == "aggTrades"
+    assert parsed.symbol == "BTCUSDT"
+    assert parsed.date_key == "2023-05-16"
+
+
+def test_classify_futures_monthly_funding():
+    p = Path("data/raw/futures/monthly/fundingRate/BTCUSDT-fundingRate-2023-05.csv")
+    parsed = classify_binance_vision_path(p)
+    assert parsed is not None
+    assert parsed.universe == "futures"
+    assert parsed.period == "monthly"
+    assert parsed.dataset == "fundingRate"
+    assert parsed.symbol == "BTCUSDT"
+    assert parsed.date_key == "2023-05"
+
+
+def test_classify_future_data_daily_data_layout():
+    p = Path("future_data/daily_data/bookTicker/BTCUSDT-bookTicker-2024-03-30.csv")
+    parsed = classify_binance_vision_path(p)
+    assert parsed is not None
+    assert parsed.universe == "futures"
+    assert parsed.period == "daily"
+    assert parsed.dataset == "bookTicker"
+    assert parsed.symbol == "BTCUSDT"
+    assert parsed.date_key == "2024-03-30"
+
+=== END FILE ===
+
+=== FILE: tests/test_parsers_smoke.py ===
+from __future__ import annotations
+
+from pathlib import Path
+
+from phoenix_etl.nautilus_compat import load_nautilus_imports
+from phoenix_etl.parsers.futures_agg_trades import FuturesAggTradesParser
+from phoenix_etl.parsers.futures_book_ticker import FuturesBookTickerParser
+from phoenix_etl.parsers.futures_funding_rate import FuturesFundingRateParser
+from phoenix_etl.parsers.futures_klines_1m import FuturesKlines1mParser
+from phoenix_etl.parsers.futures_metrics import FuturesMetricsParser
+
+N = load_nautilus_imports()
+
+
+def write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def test_futures_aggtrades_parser_headered(tmp_path: Path):
+    csv_path = tmp_path / "BTCUSDT-aggTrades-2024-03-30.csv"
+    write_text(
+        csv_path,
+        "agg_trade_id,price,quantity,first_trade_id,last_trade_id,transact_time,is_buyer_maker\n"
+        "2106960678,69903.5,0.014,4816251010,4816251012,1711756800014,true\n"
+        "2106960679,69902.0,0.022,4816251013,4816251014,1711756800015,false\n",
+    )
+    inst = N.InstrumentId.from_str("BTCUSDT.BINANCE")
+    parser = FuturesAggTradesParser()
+    batches = list(parser.parse_file(csv_path, inst, strict=True, sort_within_batch=True, batch_size=10))
+    assert sum(b.events_emitted for b in batches) == 2
+    assert batches[-1].ts_min is not None
+
+
+def test_futures_bookticker_parser_headered(tmp_path: Path):
+    csv_path = tmp_path / "BTCUSDT-bookTicker-2024-03-30.csv"
+    write_text(
+        csv_path,
+        "update_id,best_bid_price,best_bid_qty,best_ask_price,best_ask_qty,transaction_time,event_time\n"
+        "4307082974693,69903.60000000,0.46200000,69903.70000000,4.41900000,1711756800002,1711756800008\n"
+        "4307082974976,69903.60000000,0.36200000,69903.70000000,4.41900000,1711756800005,1711756800011\n",
+    )
+    inst = N.InstrumentId.from_str("BTCUSDT.BINANCE")
+    parser = FuturesBookTickerParser()
+    batches = list(parser.parse_file(csv_path, inst, strict=True, sort_within_batch=True, batch_size=10))
+    assert sum(b.events_emitted for b in batches) == 2
+    # Ensure event_time used (not transaction_time)
+    assert batches[-1].ts_min == 1711756800008 * 1_000_000
+
+
+def test_futures_klines_parser_headerless(tmp_path: Path):
+    csv_path = tmp_path / "BTCUSDT-1m-2024-03-30.csv"
+    write_text(
+        csv_path,
+        "1711756800000,69903.60,69933.00,69886.40,69924.80,71.424,1711756859999,0,0,0,0,0\n"
+        "1711756860000,69924.70,69924.80,69856.60,69874.70,167.937,1711756919999,0,0,0,0,0\n",
+    )
+    inst = N.InstrumentId.from_str("BTCUSDT.BINANCE")
+    parser = FuturesKlines1mParser()
+    batches = list(parser.parse_file(csv_path, inst, strict=True, sort_within_batch=True, batch_size=10))
+    assert sum(b.events_emitted for b in batches) == 2
+    assert batches[-1].ts_min == 1711756800000 * 1_000_000
+
+
+def test_futures_metrics_parser_headered_iso(tmp_path: Path):
+    csv_path = tmp_path / "BTCUSDT-metrics-2024-03-30.csv"
+    write_text(
+        csv_path,
+        "create_time,symbol,sum_open_interest,sum_open_interest_value,count_toptrader_long_short_ratio\n"
+        "2024-03-30 00:05:00,BTCUSDT,81108.4350000000000000,5666717142.6535260000000000,1.70938653\n"
+        "2024-03-30 00:10:00,BTCUSDT,81066.2400000000000000,5664503520.0000000000000000,1.71313963\n",
+    )
+    inst = N.InstrumentId.from_str("BTCUSDT.BINANCE")
+    parser = FuturesMetricsParser()
+    batches = list(parser.parse_file(csv_path, inst, strict=True, sort_within_batch=True, batch_size=10))
+    assert sum(b.events_emitted for b in batches) == 2
+
+
+def test_futures_funding_rate_parser_headered(tmp_path: Path):
+    csv_path = tmp_path / "BTCUSDT-fundingRate-2024-03.csv"
+    write_text(
+        csv_path,
+        "calc_time,funding_interval_hours,last_funding_rate\n"
+        "1709251200000,8,0.00053322\n"
+        "1709280000000,8,0.00064824\n",
+    )
+    inst = N.InstrumentId.from_str("BTCUSDT.BINANCE")
+    parser = FuturesFundingRateParser()
+    batches = list(parser.parse_file(csv_path, inst, strict=True, sort_within_batch=True, batch_size=10))
+    assert sum(b.events_emitted for b in batches) == 2
+
+=== END FILE ===
+
+=== FILE: tests/test_end_to_end_etl_smoke.py ===
+from __future__ import annotations
+
+from pathlib import Path
+
+from phoenix_etl.config import EtlConfig
+from phoenix_etl.etl import run_etl
+from phoenix_etl.nautilus_compat import load_nautilus_imports
+
+N = load_nautilus_imports()
+
+
+def write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def test_end_to_end_smoke(tmp_data_root: Path, tmp_catalog_root: Path, tmp_path: Path):
+    # Build minimal futures layout under tmp_data_root
+    # data/raw/futures/daily/{aggTrades,bookTicker,klines_1m,metrics,bookDepth}
+    base = tmp_data_root / "data" / "raw" / "futures"
+
+    write_text(
+        base / "daily" / "aggTrades" / "BTCUSDT-aggTrades-2023-05-16.csv",
+        "agg_trade_id,price,quantity,first_trade_id,last_trade_id,transact_time,is_buyer_maker\n"
+        "1,27000.10,0.001,1,1,1684195200000,true\n"
+        "2,27000.20,0.002,2,2,1684195200001,false\n",
+    )
+    write_text(
+        base / "daily" / "bookTicker" / "BTCUSDT-bookTicker-2023-05-16.csv",
+        "update_id,best_bid_price,best_bid_qty,best_ask_price,best_ask_qty,transaction_time,event_time\n"
+        "10,27000.10,1.0,27000.20,1.5,1684195200000,1684195200000\n",
+    )
+    write_text(
+        base / "daily" / "klines_1m" / "BTCUSDT-1m-2023-05-16.csv",
+        "1684195200000,27000.10,27000.20,26999.90,27000.15,12.345,1684195259999,0,0,0,0,0\n",
+    )
+    write_text(
+        base / "daily" / "metrics" / "BTCUSDT-metrics-2023-05-16.csv",
+        "create_time,symbol,sum_open_interest,sum_open_interest_value\n"
+        "2023-05-16 00:05:00,BTCUSDT,100.0,2700000.0\n",
+    )
+    write_text(
+        base / "daily" / "bookDepth" / "BTCUSDT-bookDepth-2023-05-16.csv",
+        "timestamp,percentage,depth,notional\n"
+        "2023-05-16 00:00:09,-5,7950.49500000,543853183.11875000\n",
+    )
+    write_text(
+        base / "monthly" / "fundingRate" / "BTCUSDT-fundingRate-2023-05.csv",
+        "calc_time,funding_interval_hours,last_funding_rate\n"
+        "1684195200000,8,0.00010000\n",
+    )
+
+    cfg = EtlConfig(
+        raw_roots=[str(tmp_data_root)],
+        catalog_path=str(tmp_catalog_root / "phoenix"),
+        manifest_path=str(tmp_path / "manifest.json"),
+        validation_report_path=str(tmp_path / "validation_report.md"),
+        universe="futures",
+        venue="BINANCE",
+        symbols=["BTCUSDT"],
+        datasets=["aggTrades", "bookTicker", "klines_1m", "metrics", "bookDepth", "fundingRate"],
+        start_date_key="2023-05-16",
+        end_date_key="2023-05-16",
+        batch_size=10,
+        strict=True,
+        sort_within_batch=True,
+    )
+
+    out = run_etl(cfg)
+    assert out.manifest_path.exists()
+    assert out.validation_report_path.exists()
+    assert out.catalog_path.exists()
+
+    # Validate catalog has some data types stored
+    catalog = N.ParquetDataCatalog(str(out.catalog_path))
+    types = catalog.list_data_types()
+    assert types is not None
+
+=== END FILE ===
