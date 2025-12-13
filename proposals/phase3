@@ -1,0 +1,1646 @@
+=== FILE: src/phoenix_research/__init__.py ===
+from __future__ import annotations
+
+__all__ = [
+    "__version__",
+]
+
+__version__ = "0.1.0"
+=== END FILE ===
+
+=== FILE: src/phoenix_research/nautilus_utils.py ===
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Any
+
+
+def _call0(obj: Any, name: str) -> Any:
+    fn = getattr(obj, name, None)
+    if fn is None:
+        raise AttributeError(name)
+    return fn()
+
+
+def price_to_float(x: Any) -> float:
+    """
+    Convert a Nautilus Price-like object to float, without assuming a specific API.
+    """
+    if x is None:
+        raise TypeError("price_to_float(None)")
+    try:
+        return float(_call0(x, "as_double"))
+    except Exception:
+        pass
+    try:
+        # Some objects use as_decimal
+        return float(_call0(x, "as_decimal"))
+    except Exception:
+        pass
+    return float(x)
+
+
+def qty_to_float(x: Any) -> float:
+    """
+    Convert a Nautilus Quantity-like object to float, without assuming a specific API.
+    """
+    if x is None:
+        raise TypeError("qty_to_float(None)")
+    try:
+        return float(_call0(x, "as_double"))
+    except Exception:
+        pass
+    try:
+        return float(_call0(x, "as_decimal"))
+    except Exception:
+        pass
+    return float(x)
+
+
+def price_to_decimal(x: Any) -> Decimal:
+    if x is None:
+        raise TypeError("price_to_decimal(None)")
+    try:
+        v = _call0(x, "as_decimal")
+        if isinstance(v, Decimal):
+            return v
+        return Decimal(str(v))
+    except Exception:
+        return Decimal(str(price_to_float(x)))
+
+
+def qty_to_decimal(x: Any) -> Decimal:
+    if x is None:
+        raise TypeError("qty_to_decimal(None)")
+    try:
+        v = _call0(x, "as_decimal")
+        if isinstance(v, Decimal):
+            return v
+        return Decimal(str(v))
+    except Exception:
+        return Decimal(str(qty_to_float(x)))
+
+
+def safe_div(n: float, d: float, *, default: float = 0.0) -> float:
+    if d == 0.0:
+        return default
+    return n / d
+=== END FILE ===
+
+=== FILE: src/phoenix_research/stats/__init__.py ===
+from phoenix_research.stats.rolling import (
+    RollingMeanStd,
+    RollingMedianMad,
+    RollingSum,
+    RollingZScore,
+)
+
+__all__ = [
+    "RollingMeanStd",
+    "RollingMedianMad",
+    "RollingSum",
+    "RollingZScore",
+]
+=== END FILE ===
+
+=== FILE: src/phoenix_research/stats/rolling.py ===
+from __future__ import annotations
+
+import math
+import statistics
+from collections import deque
+from dataclasses import dataclass
+from typing import Deque, Literal
+
+
+@dataclass
+class RollingMeanStd:
+    """
+    Sliding-window mean/std with O(1) updates.
+
+    Notes:
+      - Uses population variance (divide by n).
+      - Deterministic for a given input stream.
+    """
+
+    window: int
+    _xs: Deque[float] = None  # type: ignore[assignment]
+    _sum: float = 0.0
+    _sumsq: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.window <= 0:
+            raise ValueError("window must be positive")
+        self._xs = deque()
+
+    def __len__(self) -> int:
+        return len(self._xs)
+
+    def push(self, x: float) -> None:
+        self._xs.append(float(x))
+        self._sum += float(x)
+        self._sumsq += float(x) * float(x)
+        if len(self._xs) > self.window:
+            old = self._xs.popleft()
+            self._sum -= old
+            self._sumsq -= old * old
+
+    @property
+    def mean(self) -> float:
+        n = len(self._xs)
+        if n == 0:
+            return 0.0
+        return self._sum / n
+
+    @property
+    def var(self) -> float:
+        n = len(self._xs)
+        if n == 0:
+            return 0.0
+        mu = self._sum / n
+        v = (self._sumsq / n) - (mu * mu)
+        # Numerical guard
+        return 0.0 if v < 0.0 else v
+
+    @property
+    def std(self) -> float:
+        return math.sqrt(self.var)
+
+
+@dataclass
+class RollingMedianMad:
+    """
+    Sliding-window median and MAD (median absolute deviation).
+
+    Deterministic but O(n log n) per query due to median computation.
+    Suitable for small windows (seconds/minutes buckets) typical in microstructure signals.
+    """
+
+    window: int
+    scale_to_sigma: bool = True
+    _xs: Deque[float] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.window <= 0:
+            raise ValueError("window must be positive")
+        self._xs = deque()
+
+    def __len__(self) -> int:
+        return len(self._xs)
+
+    def push(self, x: float) -> None:
+        self._xs.append(float(x))
+        if len(self._xs) > self.window:
+            self._xs.popleft()
+
+    @property
+    def median(self) -> float:
+        if not self._xs:
+            return 0.0
+        return float(statistics.median(self._xs))
+
+    @property
+    def mad(self) -> float:
+        if not self._xs:
+            return 0.0
+        m = self.median
+        devs = [abs(x - m) for x in self._xs]
+        mad = float(statistics.median(devs)) if devs else 0.0
+        # Convert MAD to sigma-equivalent under normality (optional)
+        if self.scale_to_sigma:
+            mad *= 1.4826
+        return mad
+
+
+@dataclass
+class RollingSum:
+    """
+    Sliding-window sum with O(1) updates.
+    """
+
+    window: int
+    _xs: Deque[float] = None  # type: ignore[assignment]
+    _sum: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.window <= 0:
+            raise ValueError("window must be positive")
+        self._xs = deque()
+
+    def __len__(self) -> int:
+        return len(self._xs)
+
+    def push(self, x: float) -> None:
+        x = float(x)
+        self._xs.append(x)
+        self._sum += x
+        if len(self._xs) > self.window:
+            old = self._xs.popleft()
+            self._sum -= old
+
+    @property
+    def sum(self) -> float:
+        return self._sum
+
+
+ZScoreKind = Literal["mean_std", "median_mad"]
+
+
+@dataclass
+class RollingZScore:
+    """
+    Rolling z-score computed causally:
+
+    z(x_t) is computed from statistics of the *prior* window (t-1, t-2, ...),
+    then x_t is pushed into the window.
+
+    This avoids the subtle self-inclusion effect and is strictly causal.
+    """
+
+    window: int
+    kind: ZScoreKind = "mean_std"
+    min_count: int = 10
+    eps: float = 1e-12
+
+    _meanstd: RollingMeanStd | None = None
+    _medmad: RollingMedianMad | None = None
+
+    def __post_init__(self) -> None:
+        if self.window <= 0:
+            raise ValueError("window must be positive")
+        if self.min_count < 0:
+            raise ValueError("min_count must be non-negative")
+        if self.kind == "mean_std":
+            self._meanstd = RollingMeanStd(self.window)
+        elif self.kind == "median_mad":
+            self._medmad = RollingMedianMad(self.window)
+        else:
+            raise ValueError(f"unsupported kind: {self.kind!r}")
+
+    def __len__(self) -> int:
+        if self._meanstd is not None:
+            return len(self._meanstd)
+        assert self._medmad is not None
+        return len(self._medmad)
+
+    def _loc_scale(self) -> tuple[float, float]:
+        if self._meanstd is not None:
+            return self._meanstd.mean, self._meanstd.std
+        assert self._medmad is not None
+        return self._medmad.median, self._medmad.mad
+
+    def zscore(self, x: float, *, update: bool = True) -> float:
+        """
+        Returns z-score for x based on prior window. If update=True, pushes x after computing z.
+        """
+        n = len(self)
+        if n < self.min_count:
+            z = 0.0
+        else:
+            loc, scale = self._loc_scale()
+            if scale <= self.eps:
+                z = 0.0
+            else:
+                z = (float(x) - loc) / scale
+
+        if update:
+            self.push(float(x))
+
+        return z
+
+    def push(self, x: float) -> None:
+        if self._meanstd is not None:
+            self._meanstd.push(float(x))
+        else:
+            assert self._medmad is not None
+            self._medmad.push(float(x))
+
+    @property
+    def location(self) -> float:
+        loc, _ = self._loc_scale()
+        return loc
+
+    @property
+    def scale(self) -> float:
+        _, scale = self._loc_scale()
+        return scale
+=== END FILE ===
+
+=== FILE: src/phoenix_research/signals/__init__.py ===
+from phoenix_research.signals.lpi import (
+    LpiBucketMode,
+    LpiSignalConfig,
+    LpiSignalEngine,
+    LpiSnapshot,
+)
+
+__all__ = [
+    "LpiBucketMode",
+    "LpiSignalConfig",
+    "LpiSignalEngine",
+    "LpiSnapshot",
+]
+=== END FILE ===
+
+=== FILE: src/phoenix_research/signals/lpi.py ===
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+from typing import Literal
+
+from phoenix_etl.custom_data import BinanceBookDepthPct, BinanceFundingRate, BinanceOiMetrics
+from phoenix_etl.nautilus_compat import load_nautilus_imports
+from phoenix_research.nautilus_utils import price_to_float, qty_to_float, safe_div
+from phoenix_research.stats.rolling import RollingSum, RollingZScore
+
+N = load_nautilus_imports()
+
+LpiBucketMode = Literal["time", "notional"]
+
+
+@dataclass(frozen=True)
+class LpiSignalConfig:
+    # Bucketing
+    bucket_mode: LpiBucketMode = "notional"
+    bucket_interval_ms: int = 1000  # used when bucket_mode == "time"
+    bucket_notional_threshold: float = 5_000_000.0  # USDT notional, used for notional buckets
+
+    # Impact threshold
+    eta_bps: float = 5.0  # impact threshold in bps (5 = 0.05%)
+
+    # LPI weighting
+    lambda_ld: float = 1.0
+
+    # Exhaustion weighting
+    lambda_exh_liq: float = 1.0
+    lambda_exh_spr: float = 1.0
+
+    # Depth proxy (optional)
+    use_depth_pct: bool = False
+    depth_pct_abs: float = 5.0  # use +/- 5% rows from BinanceBookDepthPct
+    depth_max_age_ms: int = 5_000  # if older than this at bucket close, treat as missing
+
+    # Quote freshness
+    quote_max_age_ms: int = 1_000
+
+    # Normalization
+    use_zscore: bool = True
+    z_window_buckets: int = 600  # ~10 min at 1s buckets
+    z_kind: Literal["mean_std", "median_mad"] = "median_mad"
+    z_min_count: int = 30
+
+    # Volatility (for optional sizing)
+    vol_window_buckets: int = 300  # ~5 min
+    vol_floor: float = 1e-9
+
+    # Numerical
+    eps: float = 1e-12
+
+    def eta_frac(self) -> float:
+        return float(self.eta_bps) / 10_000.0
+
+    def bucket_interval_ns(self) -> int:
+        return int(self.bucket_interval_ms) * 1_000_000
+
+    def quote_max_age_ns(self) -> int:
+        return int(self.quote_max_age_ms) * 1_000_000
+
+    def depth_max_age_ns(self) -> int:
+        return int(self.depth_max_age_ms) * 1_000_000
+
+
+@dataclass(frozen=True)
+class LpiSnapshot:
+    # Timing
+    ts_event: int
+    bucket_start_ns: int
+    bucket_end_ns: int
+
+    # Market state at close (best effort, causal)
+    mid: float | None
+    spread: float | None
+    rel_spread: float | None
+    quote_age_ms: float | None
+
+    # Depth proxy (optional)
+    depth_notional: float | None
+    depth_age_ms: float | None
+
+    # Trade-derived bucket totals
+    is_notional: float  # impact sell notional
+    ib_notional: float  # impact buy notional
+    total_notional: float  # total trade notional observed in bucket
+
+    # Raw components
+    pressure_raw: float
+    ld_raw: float
+
+    # Normalized components (None if use_zscore=False)
+    pressure_z: float | None
+    ld_z: float | None
+
+    # Composite
+    lpi_fast: float
+
+    # Delta / exhaustion
+    delta_lpi: float | None
+    exh: float | None
+
+    # Slow regime prior (last-known)
+    lev: float | None
+
+    # Rolling vol proxy at bucket close
+    rv: float | None  # realized variance over window (sum r^2)
+    sigma: float | None  # sqrt(rv)
+
+
+class _QuoteLKS:
+    def __init__(self) -> None:
+        self.bid: float | None = None
+        self.ask: float | None = None
+        self.mid: float | None = None
+        self.spread: float | None = None
+        self.ts: int | None = None
+
+    def update(self, bid: float, ask: float, ts_event: int) -> None:
+        self.bid = bid
+        self.ask = ask
+        self.mid = 0.5 * (bid + ask)
+        self.spread = ask - bid
+        self.ts = ts_event
+
+
+class _DepthPctLKS:
+    """
+    Tracks last-known percent-depth notional for +/- pct rows.
+    """
+
+    def __init__(self) -> None:
+        self.ts: int | None = None
+        # key: signed pct string parsed to float (e.g., -5.0, +5.0)
+        self.notional_by_pct: dict[float, float] = {}
+
+    @staticmethod
+    def _parse_pct(s: str) -> float | None:
+        raw = (s or "").strip()
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _parse_notional(s: str) -> float | None:
+        raw = (s or "").strip()
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except Exception:
+            return None
+
+    def update(self, pct_str: str, notional_str: str, ts_event: int) -> None:
+        pct = self._parse_pct(pct_str)
+        notional = self._parse_notional(notional_str)
+        if pct is None or notional is None:
+            return
+
+        # Detect timestamp roll; clear mapping for new ts if needed.
+        if self.ts is None or ts_event > self.ts:
+            self.ts = ts_event
+            self.notional_by_pct = {}
+
+        # If ts_event equals current ts, keep accumulating levels.
+        if self.ts == ts_event:
+            self.notional_by_pct[pct] = notional
+
+    def depth_total_at_abs_pct(self, pct_abs: float) -> float | None:
+        if self.ts is None:
+            return None
+        p = float(pct_abs)
+        # Sum both sides if available; accept one-sided if only one exists.
+        bid = self.notional_by_pct.get(-p)
+        ask = self.notional_by_pct.get(+p)
+        if bid is None and ask is None:
+            return None
+        return float((bid or 0.0) + (ask or 0.0))
+
+
+class _SlowLeveragePrior:
+    """
+    Slow regime prior LEV_t = Z(OI) + lambda_F Z(funding).
+    Updated only on custom data events; treated as last-known for fast buckets.
+    """
+
+    def __init__(self, *, z_window: int, z_kind: str, z_min_count: int) -> None:
+        self._oi_z = RollingZScore(window=z_window, kind=z_kind, min_count=z_min_count)
+        self._funding_z = RollingZScore(window=z_window, kind=z_kind, min_count=z_min_count)
+        self._last_oi: float | None = None
+        self._last_funding: float | None = None
+        self._last_lev: float | None = None
+
+    @staticmethod
+    def _parse_float(s: str) -> float | None:
+        raw = (s or "").strip()
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except Exception:
+            return None
+
+    def on_oi_metrics(self, oi_value_str: str) -> None:
+        x = self._parse_float(oi_value_str)
+        if x is None:
+            return
+        # LEV is a regime prior; self-inclusion isn't meaningful. Using causal z-score still fine.
+        z = self._oi_z.zscore(x, update=True)
+        self._last_oi = x
+        # If no funding yet, lev is just OI z.
+        self._last_lev = z if self._last_funding is None else None  # set below if funding present
+        if self._last_funding is not None:
+            fz = self._funding_z.zscore(self._last_funding, update=False)
+            self._last_lev = z + fz
+
+    def on_funding_rate(self, funding_str: str) -> None:
+        x = self._parse_float(funding_str)
+        if x is None:
+            return
+        z = self._funding_z.zscore(x, update=True)
+        self._last_funding = x
+        if self._last_oi is None:
+            self._last_lev = z
+        else:
+            oiz = self._oi_z.zscore(self._last_oi, update=False)
+            self._last_lev = oiz + z
+
+    def last(self) -> float | None:
+        return self._last_lev
+
+
+class LpiSignalEngine:
+    """
+    Event-driven, causal LPI_fast / EXH / LEV signal builder.
+
+    Inputs (Phase 2 artifacts):
+      - QuoteTick (from futures bookTicker)
+      - TradeTick (from futures aggTrades)
+      - Custom Data (optional): BinanceBookDepthPct, BinanceOiMetrics, BinanceFundingRate
+
+    Outputs:
+      - LpiSnapshot emitted at bucket boundaries
+    """
+
+    def __init__(self, cfg: LpiSignalConfig) -> None:
+        self.cfg = cfg
+
+        # Last-known market state
+        self._q = _QuoteLKS()
+        self._depth = _DepthPctLKS() if cfg.use_depth_pct else None
+
+        # Slow prior
+        self._lev = _SlowLeveragePrior(
+            z_window=max(100, cfg.z_window_buckets),
+            z_kind=cfg.z_kind,
+            z_min_count=max(10, cfg.z_min_count),
+        )
+
+        # Rolling normalization for fast components
+        self._z_pressure = RollingZScore(
+            window=cfg.z_window_buckets,
+            kind=cfg.z_kind,
+            min_count=cfg.z_min_count,
+            eps=cfg.eps,
+        )
+        self._z_ld = RollingZScore(
+            window=cfg.z_window_buckets,
+            kind=cfg.z_kind,
+            min_count=cfg.z_min_count,
+            eps=cfg.eps,
+        )
+        self._z_neg_delta_lpi = RollingZScore(
+            window=cfg.z_window_buckets,
+            kind=cfg.z_kind,
+            min_count=cfg.z_min_count,
+            eps=cfg.eps,
+        )
+        self._z_delta_depth = RollingZScore(
+            window=cfg.z_window_buckets,
+            kind=cfg.z_kind,
+            min_count=cfg.z_min_count,
+            eps=cfg.eps,
+        )
+        self._z_neg_delta_spread = RollingZScore(
+            window=cfg.z_window_buckets,
+            kind=cfg.z_kind,
+            min_count=cfg.z_min_count,
+            eps=cfg.eps,
+        )
+
+        # Rolling realized volatility on bucket mids
+        self._rv = RollingSum(window=cfg.vol_window_buckets)
+        self._last_mid_for_rv: float | None = None
+
+        # Current bucket state
+        self._bucket_start_ns: int | None = None
+        self._bucket_end_ns: int | None = None
+
+        self._is_notional: float = 0.0
+        self._ib_notional: float = 0.0
+        self._total_notional: float = 0.0
+
+        # For exhaustion
+        self._prev_lpi: float | None = None
+        self._prev_spread: float | None = None
+        self._prev_depth_notional: float | None = None
+
+    # -----------------------
+    # Public event handlers
+    # -----------------------
+
+    def on_quote_tick(self, tick: object) -> list[LpiSnapshot]:
+        ts = int(getattr(tick, "ts_event"))
+        out = self._advance_time(ts)
+        bid = price_to_float(getattr(tick, "bid_price"))
+        ask = price_to_float(getattr(tick, "ask_price"))
+        self._q.update(bid, ask, ts)
+        return out
+
+    def on_trade_tick(self, tick: object) -> list[LpiSnapshot]:
+        ts = int(getattr(tick, "ts_event"))
+        out = self._advance_time(ts)
+
+        # Need quote state to compute impact threshold
+        if self._q.bid is None or self._q.ask is None or self._q.ts is None:
+            return out
+        # Strict causality: only use quote if quote timestamp <= trade timestamp
+        if self._q.ts > ts:
+            return out
+
+        price = price_to_float(getattr(tick, "price"))
+        size = qty_to_float(getattr(tick, "size"))
+        notional = price * size
+        self._total_notional += abs(notional)
+
+        side = getattr(tick, "aggressor_side", None)
+        # Prefer direct enum equality; fallback to string match
+        is_sell = False
+        try:
+            is_sell = side == N.AggressorSide.SELLER
+        except Exception:
+            s = str(side).upper()
+            is_sell = "SELL" in s
+
+        eta = self.cfg.eta_frac()
+        if is_sell:
+            thresh = float(self._q.bid) * (1.0 - eta)
+            if price < thresh:
+                self._is_notional += notional
+        else:
+            thresh = float(self._q.ask) * (1.0 + eta)
+            if price > thresh:
+                self._ib_notional += notional
+
+        # Notional-bucket finalization is trade-driven.
+        if self.cfg.bucket_mode == "notional":
+            if self._bucket_start_ns is None:
+                self._init_bucket_for_ts(ts)
+            if self._total_notional >= self.cfg.bucket_notional_threshold:
+                snap = self._finalize_bucket(ts_event=ts, bucket_end_ns=ts)
+                self._reset_bucket(next_bucket_start_ns=ts)
+                if snap is not None:
+                    out.append(snap)
+
+        return out
+
+    def on_custom_data(self, data: object) -> list[LpiSnapshot]:
+        ts = int(getattr(data, "ts_event"))
+        out = self._advance_time(ts)
+
+        if isinstance(data, BinanceBookDepthPct):
+            if self._depth is not None:
+                self._depth.update(data.percentage_str, data.notional_str, ts)
+            return out
+
+        if isinstance(data, BinanceOiMetrics):
+            # Prefer value-based OI (quote currency), which is more stable across contract changes.
+            self._lev.on_oi_metrics(data.sum_open_interest_value_str)
+            return out
+
+        if isinstance(data, BinanceFundingRate):
+            self._lev.on_funding_rate(data.rate_str)
+            return out
+
+        return out
+
+    # -----------------------
+    # Internal bucket logic
+    # -----------------------
+
+    def _init_bucket_for_ts(self, ts: int) -> None:
+        if self.cfg.bucket_mode == "time":
+            interval = self.cfg.bucket_interval_ns()
+            start = (ts // interval) * interval
+            end = start + interval
+            self._bucket_start_ns = start
+            self._bucket_end_ns = end
+        else:
+            # Notional buckets start at first trade timestamp
+            self._bucket_start_ns = ts
+            self._bucket_end_ns = None
+
+    def _reset_bucket(self, *, next_bucket_start_ns: int) -> None:
+        self._is_notional = 0.0
+        self._ib_notional = 0.0
+        self._total_notional = 0.0
+
+        if self.cfg.bucket_mode == "time":
+            # Maintain time-bucket alignment; next start is current end
+            assert self._bucket_end_ns is not None
+            self._bucket_start_ns = self._bucket_end_ns
+            self._bucket_end_ns = self._bucket_start_ns + self.cfg.bucket_interval_ns()
+        else:
+            self._bucket_start_ns = next_bucket_start_ns
+            self._bucket_end_ns = None
+
+    def _advance_time(self, ts: int) -> list[LpiSnapshot]:
+        if self._bucket_start_ns is None:
+            self._init_bucket_for_ts(ts)
+
+        if self.cfg.bucket_mode != "time":
+            return []
+
+        assert self._bucket_end_ns is not None
+        out: list[LpiSnapshot] = []
+        while ts >= self._bucket_end_ns:
+            snap = self._finalize_bucket(ts_event=self._bucket_end_ns, bucket_end_ns=self._bucket_end_ns)
+            self._reset_bucket(next_bucket_start_ns=self._bucket_end_ns)
+            if snap is not None:
+                out.append(snap)
+        return out
+
+    def _finalize_bucket(self, *, ts_event: int, bucket_end_ns: int) -> LpiSnapshot | None:
+        """
+        Finalize the current bucket ending at bucket_end_ns.
+
+        Must be called causally: before processing any event with ts_event >= bucket_end_ns.
+        """
+        if self._bucket_start_ns is None:
+            return None
+        bucket_start = int(self._bucket_start_ns)
+        bucket_end = int(bucket_end_ns)
+
+        # Quote state at close (best effort, causal via _advance_time ordering)
+        mid = self._q.mid
+        spread = self._q.spread
+        rel_spread = None
+        quote_age_ms = None
+        if self._q.ts is not None and mid is not None and spread is not None:
+            quote_age_ns = bucket_end - self._q.ts
+            quote_age_ms = quote_age_ns / 1_000_000.0
+            rel_spread = safe_div(spread, mid, default=None)  # type: ignore[arg-type]
+
+        # Depth proxy
+        depth_notional = None
+        depth_age_ms = None
+        if self._depth is not None and self._depth.ts is not None:
+            age_ns = bucket_end - self._depth.ts
+            depth_age_ms = age_ns / 1_000_000.0
+            if age_ns <= self.cfg.depth_max_age_ns():
+                depth_notional = self._depth.depth_total_at_abs_pct(self.cfg.depth_pct_abs)
+
+        # Raw components
+        pressure_raw = self._is_notional - self._ib_notional
+
+        ld_raw = 0.0
+        if spread is not None and mid is not None and mid > 0.0:
+            if self.cfg.use_depth_pct and depth_notional is not None and depth_notional > 0.0:
+                ld_raw = spread / (depth_notional + self.cfg.eps)
+            else:
+                ld_raw = spread / mid
+
+        # Normalization (causal rolling z)
+        if self.cfg.use_zscore:
+            pressure_z = self._z_pressure.zscore(pressure_raw, update=True)
+            ld_z = self._z_ld.zscore(ld_raw, update=True)
+            lpi_fast = pressure_z + (self.cfg.lambda_ld * ld_z)
+        else:
+            pressure_z = None
+            ld_z = None
+            lpi_fast = pressure_raw + (self.cfg.lambda_ld * ld_raw)
+
+        # Delta / EXH
+        delta_lpi = None
+        exh = None
+        if self._prev_lpi is not None:
+            delta_lpi = lpi_fast - self._prev_lpi
+
+            if self.cfg.use_zscore:
+                z_neg_dlpi = self._z_neg_delta_lpi.zscore(-delta_lpi, update=True)
+
+                if self.cfg.use_depth_pct and depth_notional is not None and self._prev_depth_notional is not None:
+                    ddepth = depth_notional - self._prev_depth_notional
+                    z_ddepth = self._z_delta_depth.zscore(ddepth, update=True)
+                    exh = z_neg_dlpi + (self.cfg.lambda_exh_liq * z_ddepth)
+                else:
+                    # Spread reversion proxy
+                    if spread is not None and self._prev_spread is not None:
+                        dspr = spread - self._prev_spread
+                        z_neg_dspr = self._z_neg_delta_spread.zscore(-dspr, update=True)
+                        exh = z_neg_dlpi + (self.cfg.lambda_exh_spr * z_neg_dspr)
+            else:
+                # Raw exhaustion proxy
+                exh = -delta_lpi
+                if self.cfg.use_depth_pct and depth_notional is not None and self._prev_depth_notional is not None:
+                    exh += self.cfg.lambda_exh_liq * (depth_notional - self._prev_depth_notional)
+                elif spread is not None and self._prev_spread is not None:
+                    exh += self.cfg.lambda_exh_spr * (-(spread - self._prev_spread))
+
+        self._prev_lpi = lpi_fast
+        self._prev_spread = spread
+        self._prev_depth_notional = depth_notional
+
+        # Realized volatility on mid
+        rv = None
+        sigma = None
+        if mid is not None and mid > 0.0:
+            if self._last_mid_for_rv is not None and self._last_mid_for_rv > 0.0:
+                r = math.log(mid / self._last_mid_for_rv)
+                self._rv.push(r * r)
+            self._last_mid_for_rv = mid
+
+            rv = self._rv.sum
+            sigma = math.sqrt(max(rv, 0.0))
+
+        lev = self._lev.last()
+
+        return LpiSnapshot(
+            ts_event=int(ts_event),
+            bucket_start_ns=bucket_start,
+            bucket_end_ns=bucket_end,
+            mid=mid,
+            spread=spread,
+            rel_spread=rel_spread,
+            quote_age_ms=quote_age_ms,
+            depth_notional=depth_notional,
+            depth_age_ms=depth_age_ms,
+            is_notional=float(self._is_notional),
+            ib_notional=float(self._ib_notional),
+            total_notional=float(self._total_notional),
+            pressure_raw=float(pressure_raw),
+            ld_raw=float(ld_raw),
+            pressure_z=pressure_z,
+            ld_z=ld_z,
+            lpi_fast=float(lpi_fast),
+            delta_lpi=(float(delta_lpi) if delta_lpi is not None else None),
+            exh=(float(exh) if exh is not None else None),
+            lev=lev,
+            rv=rv,
+            sigma=sigma,
+        )
+=== END FILE ===
+
+=== FILE: src/phoenix_research/strategies/__init__.py ===
+from phoenix_research.strategies.ema_cross_baseline import EmaCrossBaseline, EmaCrossBaselineConfig
+from phoenix_research.strategies.phoenix_lpi import PhoenixLpiStrategy, PhoenixLpiStrategyConfig
+
+__all__ = [
+    "EmaCrossBaseline",
+    "EmaCrossBaselineConfig",
+    "PhoenixLpiStrategy",
+    "PhoenixLpiStrategyConfig",
+]
+=== END FILE ===
+
+=== FILE: src/phoenix_research/strategies/ema_cross_baseline.py ===
+from __future__ import annotations
+
+from decimal import Decimal
+
+from nautilus_trader.config import PositiveInt, StrategyConfig
+from nautilus_trader.core.correctness import PyCondition
+from nautilus_trader.indicators import ExponentialMovingAverage
+from nautilus_trader.model.data import Bar, BarType
+from nautilus_trader.model.enums import OrderSide, TimeInForce
+from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.model.orders import MarketOrder
+from nautilus_trader.trading.strategy import Strategy
+
+
+class EmaCrossBaselineConfig(StrategyConfig, frozen=True):
+    instrument_id: InstrumentId
+    bar_type: BarType
+    trade_size: Decimal
+    fast_ema_period: PositiveInt = 10
+    slow_ema_period: PositiveInt = 20
+    request_historical_bars: bool = False
+    close_positions_on_stop: bool = True
+    order_time_in_force: TimeInForce = TimeInForce.GTC
+
+
+class EmaCrossBaseline(Strategy):
+    """
+    Baseline EMA cross strategy (Phase 3 baseline).
+
+    Intended to be run using Bar data ingested in Phase 2 (e.g., futures klines_1m -> Bar).
+    """
+
+    def __init__(self, config: EmaCrossBaselineConfig) -> None:
+        PyCondition.is_true(
+            config.fast_ema_period < config.slow_ema_period,
+            "{config.fast_ema_period=} must be less than {config.slow_ema_period=}",
+        )
+        super().__init__(config=config)
+
+        self.instrument: Instrument | None = None
+        self.fast_ema = ExponentialMovingAverage(config.fast_ema_period)
+        self.slow_ema = ExponentialMovingAverage(config.slow_ema_period)
+
+    def on_start(self) -> None:
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
+            self.stop()
+            return
+
+        self.register_indicator_for_bars(self.config.bar_type, self.fast_ema)
+        self.register_indicator_for_bars(self.config.bar_type, self.slow_ema)
+
+        if self.config.request_historical_bars:
+            # Leave start/end selection to Phase 4 runner; here we only request a small warmup.
+            import pandas as pd
+
+            self.request_bars(self.config.bar_type, start=self.clock.utc_now() - pd.Timedelta(days=1))
+
+        self.subscribe_bars(self.config.bar_type)
+
+    def on_bar(self, bar: Bar) -> None:
+        if not self.indicators_initialized():
+            return
+
+        if self.fast_ema.value >= self.slow_ema.value:
+            if self.portfolio.is_flat(self.config.instrument_id):
+                self._buy()
+            elif self.portfolio.is_net_short(self.config.instrument_id):
+                self.close_all_positions(self.config.instrument_id)
+                self._buy()
+        else:
+            if self.portfolio.is_flat(self.config.instrument_id):
+                self._sell()
+            elif self.portfolio.is_net_long(self.config.instrument_id):
+                self.close_all_positions(self.config.instrument_id)
+                self._sell()
+
+    def _buy(self) -> None:
+        assert self.instrument is not None
+        order: MarketOrder = self.order_factory.market(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.BUY,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            time_in_force=self.config.order_time_in_force,
+        )
+        self.submit_order(order)
+
+    def _sell(self) -> None:
+        assert self.instrument is not None
+        order: MarketOrder = self.order_factory.market(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.SELL,
+            quantity=self.instrument.make_qty(self.config.trade_size),
+            time_in_force=self.config.order_time_in_force,
+        )
+        self.submit_order(order)
+
+    def on_stop(self) -> None:
+        self.cancel_all_orders(self.config.instrument_id)
+        if self.config.close_positions_on_stop:
+            self.close_all_positions(self.config.instrument_id)
+        self.unsubscribe_bars(self.config.bar_type)
+
+    def on_reset(self) -> None:
+        self.fast_ema.reset()
+        self.slow_ema.reset()
+=== END FILE ===
+
+=== FILE: src/phoenix_research/strategies/phoenix_lpi.py ===
+from __future__ import annotations
+
+from dataclasses import dataclass
+from decimal import Decimal
+from typing import Any
+
+from phoenix_research.nautilus_utils import price_to_decimal
+from phoenix_research.signals.lpi import LpiSignalConfig, LpiSignalEngine, LpiSnapshot
+
+from nautilus_trader.config import PositiveInt, StrategyConfig
+from nautilus_trader.model.data import QuoteTick, TradeTick
+from nautilus_trader.model.data import DataType
+from nautilus_trader.model.enums import OrderSide, TimeInForce
+from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.model.orders import LimitOrder, MarketOrder
+from nautilus_trader.trading.strategy import Strategy
+
+from phoenix_etl.custom_data import BinanceBookDepthPct, BinanceFundingRate, BinanceOiMetrics
+
+
+@dataclass(frozen=True)
+class _PendingEntry:
+    client_order_id: Any
+    ts_submit: int
+    side: OrderSide
+    variant: str  # "momentum" | "mean_reversion"
+
+
+class PhoenixLpiStrategyConfig(StrategyConfig, frozen=True):
+    """
+    Phoenix LPI strategy (Phase 3): combines two variants via exhaustion gating.
+
+    Variant selection (from Phase 1):
+      - Momentum (cascade continuation): |LPI| >= theta_LPI AND EXH <= theta_EXH_low
+      - Mean reversion (post-exhaustion): |LPI| >= theta_LPI AND EXH >= theta_EXH_high
+    """
+
+    instrument_id: Any  # InstrumentId; kept as Any to avoid import drift across Nautilus versions
+    trade_size: Decimal
+
+    # Bucketing / signal config
+    bucket_mode: str = "notional"  # "time" | "notional"
+    bucket_interval_ms: int = 1000
+    bucket_notional_threshold: float = 5_000_000.0
+
+    eta_bps: float = 5.0
+    use_depth_pct: bool = False
+    depth_pct_abs: float = 5.0
+
+    use_zscore: bool = True
+    z_window_buckets: PositiveInt = 600
+    z_kind: str = "median_mad"
+    z_min_count: PositiveInt = 30
+
+    # LPI weights
+    lambda_ld: float = 1.0
+    lambda_exh_liq: float = 1.0
+    lambda_exh_spr: float = 1.0
+
+    # Entry thresholds
+    theta_lpi: float = 2.0
+    theta_exh_low: float = -0.5
+    theta_exh_high: float = 0.5
+
+    # Exit thresholds
+    lpi_exit_abs: float = 0.5
+
+    # Risk / gates
+    max_rel_spread_bps: float = 20.0  # if rel_spread > this, do not enter (or cancel)
+    min_depth_notional: float = 0.0  # only applies if use_depth_pct
+    quote_max_age_ms: int = 1000
+    depth_max_age_ms: int = 5000
+
+    # Execution
+    momentum_use_market: bool = True
+    mean_rev_post_only: bool = True
+    mean_rev_improve_ticks: int = 0
+    entry_ttl_buckets: PositiveInt = 5
+
+    # Holding limits
+    max_hold_buckets_momentum: PositiveInt = 10
+    max_hold_buckets_mean_rev: PositiveInt = 60
+
+    close_positions_on_stop: bool = True
+    reduce_only_on_stop: bool = True
+
+
+class PhoenixLpiStrategy(Strategy):
+    """
+    Event-driven strategy consuming Phase 2 canonical data via Nautilus dispatch.
+    """
+
+    def __init__(self, config: PhoenixLpiStrategyConfig) -> None:
+        super().__init__(config=config)
+
+        self.instrument: Instrument | None = None
+
+        self.signal_engine = LpiSignalEngine(
+            LpiSignalConfig(
+                bucket_mode=("time" if config.bucket_mode == "time" else "notional"),
+                bucket_interval_ms=int(config.bucket_interval_ms),
+                bucket_notional_threshold=float(config.bucket_notional_threshold),
+                eta_bps=float(config.eta_bps),
+                lambda_ld=float(config.lambda_ld),
+                lambda_exh_liq=float(config.lambda_exh_liq),
+                lambda_exh_spr=float(config.lambda_exh_spr),
+                use_depth_pct=bool(config.use_depth_pct),
+                depth_pct_abs=float(config.depth_pct_abs),
+                depth_max_age_ms=int(config.depth_max_age_ms),
+                quote_max_age_ms=int(config.quote_max_age_ms),
+                use_zscore=bool(config.use_zscore),
+                z_window_buckets=int(config.z_window_buckets),
+                z_kind=str(config.z_kind),  # "mean_std" | "median_mad"
+                z_min_count=int(config.z_min_count),
+            ),
+        )
+
+        # State
+        self._last_snapshot: LpiSnapshot | None = None
+        self._pending_entry: _PendingEntry | None = None
+        self._position_variant: str | None = None
+        self._position_entry_bucket_end: int | None = None
+
+    def on_start(self) -> None:
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        if self.instrument is None:
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
+            self.stop()
+            return
+
+        # Subscribe to required streams (Phase 2 outputs are canonical Nautilus types)
+        self.subscribe_quote_ticks(self.config.instrument_id)
+        self.subscribe_trade_ticks(self.config.instrument_id)
+
+        # Subscribe to optional custom data
+        # NOTE: This only subscribes; Phase 4 runner decides what data is loaded into the engine.
+        self.subscribe_data(DataType(BinanceOiMetrics), instrument_id=self.config.instrument_id)
+        self.subscribe_data(DataType(BinanceFundingRate), instrument_id=self.config.instrument_id)
+        self.subscribe_data(DataType(BinanceBookDepthPct), instrument_id=self.config.instrument_id)
+
+    def on_quote_tick(self, tick: QuoteTick) -> None:
+        snaps = self.signal_engine.on_quote_tick(tick)
+        for s in snaps:
+            self._on_bucket(s)
+
+    def on_trade_tick(self, tick: TradeTick) -> None:
+        snaps = self.signal_engine.on_trade_tick(tick)
+        for s in snaps:
+            self._on_bucket(s)
+
+    def on_data(self, data) -> None:
+        snaps = self.signal_engine.on_custom_data(data)
+        for s in snaps:
+            self._on_bucket(s)
+
+    # ------------------------
+    # Decision policy (bucket)
+    # ------------------------
+
+    def _on_bucket(self, snap: LpiSnapshot) -> None:
+        self._last_snapshot = snap
+
+        # Manage pending entry TTL / cancel gates
+        self._maybe_cancel_pending_entry(snap)
+
+        # Manage existing position exits
+        self._maybe_exit_position(snap)
+
+        # Entry logic
+        if self._pending_entry is not None:
+            return  # one-at-a-time
+        if self.portfolio.is_flat(self.config.instrument_id):
+            self._maybe_enter(snap)
+
+    def _gates_ok(self, snap: LpiSnapshot) -> bool:
+        # Require quote freshness and valid spread/mid
+        if snap.mid is None or snap.spread is None or snap.rel_spread is None or snap.quote_age_ms is None:
+            return False
+        if snap.quote_age_ms > float(self.config.quote_max_age_ms):
+            return False
+
+        # Spread gate in bps
+        rel_bps = (snap.rel_spread * 10_000.0) if snap.rel_spread is not None else None
+        if rel_bps is None:
+            return False
+        if rel_bps > float(self.config.max_rel_spread_bps):
+            return False
+
+        # Depth gate (optional)
+        if self.config.use_depth_pct:
+            if snap.depth_notional is None or snap.depth_age_ms is None:
+                return False
+            if snap.depth_age_ms > float(self.config.depth_max_age_ms):
+                return False
+            if snap.depth_notional < float(self.config.min_depth_notional):
+                return False
+
+        return True
+
+    def _maybe_enter(self, snap: LpiSnapshot) -> None:
+        if not self._gates_ok(snap):
+            return
+
+        lpi = float(snap.lpi_fast)
+        exh = float(snap.exh) if snap.exh is not None else 0.0
+
+        if abs(lpi) < float(self.config.theta_lpi):
+            return
+
+        variant: str | None = None
+        side: OrderSide | None = None
+
+        # Variant A: cascade momentum (continuation)
+        if exh <= float(self.config.theta_exh_low):
+            variant = "momentum"
+            if lpi > 0.0:
+                side = OrderSide.SELL  # trade with sell pressure (short)
+            elif lpi < 0.0:
+                side = OrderSide.BUY  # trade with buy pressure (long)
+
+        # Variant B: post-exhaustion mean reversion
+        elif exh >= float(self.config.theta_exh_high):
+            variant = "mean_reversion"
+            if lpi > 0.0:
+                side = OrderSide.BUY  # fade sell pressure
+            elif lpi < 0.0:
+                side = OrderSide.SELL  # fade buy pressure
+
+        if variant is None or side is None:
+            return
+
+        # Place order
+        if variant == "momentum":
+            self._enter_momentum(side=side, snap=snap)
+        else:
+            self._enter_mean_reversion(side=side, snap=snap)
+
+    def _enter_momentum(self, *, side: OrderSide, snap: LpiSnapshot) -> None:
+        assert self.instrument is not None
+
+        qty = self.instrument.make_qty(self.config.trade_size)
+
+        if self.config.momentum_use_market:
+            order: MarketOrder = self.order_factory.market(
+                instrument_id=self.config.instrument_id,
+                order_side=side,
+                quantity=qty,
+                time_in_force=TimeInForce.IOC,
+            )
+            self.submit_order(order)
+            self._pending_entry = _PendingEntry(
+                client_order_id=order.client_order_id,
+                ts_submit=int(snap.bucket_end_ns),
+                side=side,
+                variant="momentum",
+            )
+        else:
+            # Marketable limit (taker-ish): cross the spread by 1 tick as best effort.
+            last_q = self.cache.quote_tick(self.config.instrument_id)
+            if last_q is None:
+                return
+            bid = price_to_decimal(last_q.bid_price)
+            ask = price_to_decimal(last_q.ask_price)
+            tick = self.instrument.price_increment
+
+            if side == OrderSide.BUY:
+                px = self.instrument.make_price(ask + tick)
+            else:
+                px = self.instrument.make_price(bid - tick)
+
+            order: LimitOrder = self.order_factory.limit(
+                instrument_id=self.config.instrument_id,
+                order_side=side,
+                quantity=qty,
+                price=px,
+                post_only=False,
+                time_in_force=TimeInForce.IOC,
+            )
+            self.submit_order(order)
+            self._pending_entry = _PendingEntry(
+                client_order_id=order.client_order_id,
+                ts_submit=int(snap.bucket_end_ns),
+                side=side,
+                variant="momentum",
+            )
+
+    def _enter_mean_reversion(self, *, side: OrderSide, snap: LpiSnapshot) -> None:
+        assert self.instrument is not None
+
+        last_q = self.cache.quote_tick(self.config.instrument_id)
+        if last_q is None:
+            return
+
+        bid = price_to_decimal(last_q.bid_price)
+        ask = price_to_decimal(last_q.ask_price)
+        tick = self.instrument.price_increment
+
+        improve = max(int(self.config.mean_rev_improve_ticks), 0)
+
+        if side == OrderSide.BUY:
+            # Improve bid towards ask (but do not cross).
+            px = bid
+            if improve > 0:
+                px_try = bid + (tick * improve)
+                # keep strictly below ask to remain maker
+                if px_try < ask:
+                    px = px_try
+            price = self.instrument.make_price(px)
+        else:
+            px = ask
+            if improve > 0:
+                px_try = ask - (tick * improve)
+                if px_try > bid:
+                    px = px_try
+            price = self.instrument.make_price(px)
+
+        qty = self.instrument.make_qty(self.config.trade_size)
+
+        order: LimitOrder = self.order_factory.limit(
+            instrument_id=self.config.instrument_id,
+            order_side=side,
+            quantity=qty,
+            price=price,
+            post_only=bool(self.config.mean_rev_post_only),
+            time_in_force=TimeInForce.GTC,
+        )
+        self.submit_order(order)
+        self._pending_entry = _PendingEntry(
+            client_order_id=order.client_order_id,
+            ts_submit=int(snap.bucket_end_ns),
+            side=side,
+            variant="mean_reversion",
+        )
+
+    def _maybe_cancel_pending_entry(self, snap: LpiSnapshot) -> None:
+        if self._pending_entry is None:
+            return
+
+        # TTL in bucket units (approx, using bucket boundaries)
+        ttl = int(self.config.entry_ttl_buckets)
+        # When using time buckets, ttl maps cleanly; for notional buckets, ttl is "bucket count".
+        # We count buckets via bucket_end_ns increments.
+        # Cancel if too old or if gates are violated (spread blows out).
+        age_buckets = 0
+        if self._position_entry_bucket_end is None:
+            # Use submit time as reference
+            age_buckets = 1
+            if self._last_snapshot is not None:
+                # Approx: if bucket_end advances, consider age increment; for simplicity count as 1 per bucket callback.
+                pass
+
+        # Time-based hard cancel using ns:
+        if int(snap.bucket_end_ns) - int(self._pending_entry.ts_submit) >= ttl * self.signal_engine.cfg.bucket_interval_ns():
+            order = self.cache.order(self._pending_entry.client_order_id)
+            if order is not None and order.is_open:
+                self.cancel_order(order)
+            self._pending_entry = None
+            return
+
+        # Cancel on gate failure (spread/quote age)
+        if not self._gates_ok(snap):
+            order = self.cache.order(self._pending_entry.client_order_id)
+            if order is not None and order.is_open:
+                self.cancel_order(order)
+            self._pending_entry = None
+            return
+
+    def _maybe_exit_position(self, snap: LpiSnapshot) -> None:
+        if self.portfolio.is_flat(self.config.instrument_id):
+            self._position_variant = None
+            self._position_entry_bucket_end = None
+            return
+
+        # If we don't know variant, default to risk-managed exit on normalization
+        variant = self._position_variant or "unknown"
+        entry_end = self._position_entry_bucket_end
+
+        # Holding time in buckets (best effort)
+        hold_buckets = None
+        if entry_end is not None:
+            # With time buckets, bucket_end_ns increments by interval. With notional buckets, use bucket count heuristics.
+            interval_ns = self.signal_engine.cfg.bucket_interval_ns() if self.signal_engine.cfg.bucket_mode == "time" else None
+            if interval_ns:
+                hold_buckets = max(0, (int(snap.bucket_end_ns) - int(entry_end)) // int(interval_ns))
+            else:
+                # Notional buckets: approximate with 1 callback per bucket
+                hold_buckets = None
+
+        lpi_abs = abs(float(snap.lpi_fast))
+
+        if variant == "momentum":
+            if hold_buckets is not None and hold_buckets >= int(self.config.max_hold_buckets_momentum):
+                self.close_all_positions(self.config.instrument_id, reduce_only=True)
+                self.cancel_all_orders(self.config.instrument_id)
+                return
+
+            # Exit if exhaustion indicates regime is ending
+            if snap.exh is not None and float(snap.exh) >= float(self.config.theta_exh_high):
+                self.close_all_positions(self.config.instrument_id, reduce_only=True)
+                self.cancel_all_orders(self.config.instrument_id)
+                return
+
+        elif variant == "mean_reversion":
+            if hold_buckets is not None and hold_buckets >= int(self.config.max_hold_buckets_mean_rev):
+                self.close_all_positions(self.config.instrument_id, reduce_only=True)
+                self.cancel_all_orders(self.config.instrument_id)
+                return
+
+            if lpi_abs <= float(self.config.lpi_exit_abs):
+                self.close_all_positions(self.config.instrument_id, reduce_only=True)
+                self.cancel_all_orders(self.config.instrument_id)
+                return
+
+            # If pressure re-accelerates (exhaustion low) against our thesis, exit
+            if snap.exh is not None and float(snap.exh) <= float(self.config.theta_exh_low):
+                self.close_all_positions(self.config.instrument_id, reduce_only=True)
+                self.cancel_all_orders(self.config.instrument_id)
+                return
+
+        else:
+            # Unknown variant: conservative exit on normalization
+            if lpi_abs <= float(self.config.lpi_exit_abs):
+                self.close_all_positions(self.config.instrument_id, reduce_only=True)
+                self.cancel_all_orders(self.config.instrument_id)
+                return
+
+    # ------------------------
+    # Order/position events
+    # ------------------------
+
+    def on_order_filled(self, event) -> None:
+        # Track transitions from pending entry -> position state.
+        if self._pending_entry is not None and event.client_order_id == self._pending_entry.client_order_id:
+            self._position_variant = self._pending_entry.variant
+            self._position_entry_bucket_end = self._last_snapshot.bucket_end_ns if self._last_snapshot else int(event.ts_event)
+            self._pending_entry = None
+
+    def on_stop(self) -> None:
+        self.cancel_all_orders(self.config.instrument_id)
+        if self.config.close_positions_on_stop:
+            self.close_all_positions(
+                instrument_id=self.config.instrument_id,
+                reduce_only=bool(self.config.reduce_only_on_stop),
+            )
+
+        # Unsubscribe (optional; safe to call)
+        self.unsubscribe_quote_ticks(self.config.instrument_id)
+        self.unsubscribe_trade_ticks(self.config.instrument_id)
+
+        # Custom data unsubscribes are best-effort
+        self.unsubscribe_data(DataType(BinanceOiMetrics), instrument_id=self.config.instrument_id)
+        self.unsubscribe_data(DataType(BinanceFundingRate), instrument_id=self.config.instrument_id)
+        self.unsubscribe_data(DataType(BinanceBookDepthPct), instrument_id=self.config.instrument_id)
+
+    def on_reset(self) -> None:
+        # Reset internal state; signal engine is stateful, so re-create
+        self.signal_engine = LpiSignalEngine(self.signal_engine.cfg)
+        self._last_snapshot = None
+        self._pending_entry = None
+        self._position_variant = None
+        self._position_entry_bucket_end = None
+=== END FILE ===
+
+=== FILE: tests/test_rolling_stats.py ===
+from __future__ import annotations
+
+import math
+
+from phoenix_research.stats.rolling import RollingMeanStd, RollingMedianMad, RollingSum, RollingZScore
+
+
+def test_rolling_mean_std_basic():
+    rs = RollingMeanStd(window=3)
+    rs.push(1.0)
+    rs.push(2.0)
+    rs.push(3.0)
+    assert len(rs) == 3
+    assert rs.mean == 2.0
+    assert abs(rs.std - math.sqrt(((1 + 4 + 9) / 3) - 4.0)) < 1e-12
+
+    rs.push(4.0)  # window now [2,3,4]
+    assert len(rs) == 3
+    assert rs.mean == 3.0
+
+
+def test_rolling_sum_basic():
+    rs = RollingSum(window=2)
+    rs.push(1.0)
+    rs.push(2.0)
+    assert rs.sum == 3.0
+    rs.push(3.0)  # window [2,3]
+    assert rs.sum == 5.0
+
+
+def test_rolling_zscore_causal_update():
+    rz = RollingZScore(window=5, kind="mean_std", min_count=1)
+    # First z computed on empty window -> 0
+    z1 = rz.zscore(10.0, update=True)
+    assert z1 == 0.0
+
+    # Second z computed on window [10] -> std=0 -> 0
+    z2 = rz.zscore(11.0, update=True)
+    assert z2 == 0.0
+
+    # Third z computed on [10,11] -> nonzero
+    z3 = rz.zscore(12.0, update=True)
+    assert isinstance(z3, float)
+
+
+def test_rolling_median_mad_basic():
+    rm = RollingMedianMad(window=5, scale_to_sigma=False)
+    for x in [1.0, 2.0, 3.0, 4.0, 100.0]:
+        rm.push(x)
+    assert rm.median == 3.0
+    # MAD around median 3 is median(|x-3|) for [2,1,0,1,97] => 1
+    assert rm.mad == 1.0
+=== END FILE ===
+
+=== FILE: tests/test_lpi_signal_engine.py ===
+from __future__ import annotations
+
+from phoenix_etl.nautilus_compat import load_nautilus_imports
+from phoenix_research.signals.lpi import LpiSignalConfig, LpiSignalEngine
+
+N = load_nautilus_imports()
+
+
+def make_quote(inst, bid: str, ask: str, ts: int):
+    QuoteTick = N.QuoteTick
+    Price = N.Price
+    Quantity = N.Quantity
+    return QuoteTick(
+        instrument_id=inst,
+        bid_price=Price.from_str(bid),
+        ask_price=Price.from_str(ask),
+        bid_size=Quantity.from_str("1"),
+        ask_size=Quantity.from_str("1"),
+        ts_event=ts,
+        ts_init=ts,
+    )
+
+
+def make_trade(inst, price: str, qty: str, ts: int, is_sell: bool):
+    TradeTick = N.TradeTick
+    Price = N.Price
+    Quantity = N.Quantity
+    TradeId = N.TradeId
+    AggressorSide = N.AggressorSide
+    side = AggressorSide.SELLER if is_sell else AggressorSide.BUYER
+    return TradeTick(
+        instrument_id=inst,
+        price=Price.from_str(price),
+        size=Quantity.from_str(qty),
+        aggressor_side=side,
+        trade_id=TradeId(f"{ts}"),
+        ts_event=ts,
+        ts_init=ts,
+    )
+
+
+def test_lpi_engine_counts_impact_notional_and_is_causal_on_bucket_close():
+    inst = N.InstrumentId.from_str("BTCUSDT.BINANCE")
+
+    cfg = LpiSignalConfig(
+        bucket_mode="time",
+        bucket_interval_ms=1000,
+        eta_bps=50.0,  # 0.50% threshold to make test obvious
+        use_zscore=False,
+        lambda_ld=0.0,  # isolate pressure
+    )
+    eng = LpiSignalEngine(cfg)
+
+    # Quote at t=0ms
+    out = eng.on_quote_tick(make_quote(inst, bid="100", ask="101", ts=0))
+    assert out == []
+
+    # Trade SELL at 99 (below 100*(1-0.005)=99.5) -> impact sell
+    out = eng.on_trade_tick(make_trade(inst, price="99", qty="2", ts=100_000_000, is_sell=True))
+    assert out == []
+
+    # Trade BUY at 101.1 (not above ask*(1+0.005)=101.505) -> NOT impact buy
+    out = eng.on_trade_tick(make_trade(inst, price="101.1", qty="1", ts=200_000_000, is_sell=False))
+    assert out == []
+
+    # At t=1s, we receive a quote; engine must finalize the prior bucket [0,1s) BEFORE applying this quote.
+    out = eng.on_quote_tick(make_quote(inst, bid="90", ask="91", ts=1_000_000_000))
+    assert len(out) == 1
+    snap = out[0]
+
+    # Causality check: mid/spread in the finalized bucket should reflect the quote state from t<1s (bid=100, ask=101)
+    assert snap.mid == 100.5
+    assert snap.spread == 1.0
+
+    # Impact sell notional: 99 * 2 = 198
+    assert abs(snap.is_notional - 198.0) < 1e-9
+    assert snap.ib_notional == 0.0
+    assert abs(snap.pressure_raw - 198.0) < 1e-9
+    assert abs(snap.lpi_fast - 198.0) < 1e-9  # lambda_ld=0, zscore disabled
+
+
+def test_lpi_engine_emits_multiple_time_buckets_when_time_skips():
+    inst = N.InstrumentId.from_str("BTCUSDT.BINANCE")
+    cfg = LpiSignalConfig(
+        bucket_mode="time",
+        bucket_interval_ms=1000,
+        use_zscore=False,
+        lambda_ld=0.0,
+    )
+    eng = LpiSignalEngine(cfg)
+
+    eng.on_quote_tick(make_quote(inst, bid="100", ask="101", ts=0))
+    # Jump to 3 seconds with a quote; should emit 3 buckets: [0,1), [1,2), [2,3)
+    out = eng.on_quote_tick(make_quote(inst, bid="100", ask="101", ts=3_000_000_000))
+    assert len(out) == 3
+    assert out[0].bucket_end_ns == 1_000_000_000
+    assert out[1].bucket_end_ns == 2_000_000_000
+    assert out[2].bucket_end_ns == 3_000_000_000
+=== END FILE ===
