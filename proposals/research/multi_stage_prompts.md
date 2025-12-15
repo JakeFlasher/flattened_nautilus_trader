@@ -66,3 +66,102 @@ Produce a hierarchical Markdown document. To meet the density requirements, ever
 
 **Output Generation:** Begin by outlining the Table of Contents for a 50-page Technical Specification, then proceed to execute Chapter 1.
 ```
+
+
+```stage 2
+**Role & Objective:**
+
+You are the **Lead Algorithmic Architect** implementing the mathematical alpha defined in Chapter 1. Your goal is to author **Chapter 2: The NautilusTrader Architecture**, detailing exactly how to translate the theoretical VPIN and Volatility estimators into event-driven code using the **NautilusTrader** framework.
+
+**Input Context (From Chapter 1):**
+
+Assume the existence of the following defined alpha components:
+
+1.  **$\sigma_{YZ}^2$ (Yang-Zhang Volatility):** Calculated on 1-minute bars.
+
+2.  **$VPIN$ (Flow Toxicity):** Calculated from aggregated trades (tick-level).
+
+3.  **$\mathcal{L}$ (Liquidity State):** Derived from BookTicker updates.
+
+**Dataset Constraints (Strict):**
+
+You must design the data ingestion pipeline for the following specific local file paths [1][3]:
+
+*   **Trades:** data/raw/futures/daily/aggTrades/BTCUSDT-aggTrades-*.csv
+
+*   **Quotes:** data/raw/futures/daily/bookTicker/BTCUSDT-bookTicker-*.csv
+
+*   **Bars:** data/raw/futures/daily/klines_1m/BTCUSDT-1m-*.csv
+
+---
+
+### **Chapter 2 Requirements**
+
+Please generate a highly technical, code-heavy (Python/Cython style) architecture section covering the following:
+
+#### **2.1 Custom Data Loading & Wrangling**
+
+Since we are using raw Binance CSVs locally (no API keys), you must define the **Wrangling Logic** to convert these CSVs into Nautilus internal objects [4].
+
+*   **Schema Mapping:** Create a table mapping the raw CSV columns (e.g., best_bid_price, best_bid_qty) to Nautilus QuoteTick fields.
+
+*   **Code Specification:** Provide the Python code structure for loading these files into the **Data Catalog**.
+
+    *   Reference: Use nautilus_trader.persistence.wranglers or custom CSV loaders.
+
+    *   Challenge: Address how to handle aggTrades (which are aggregate trade batches) versus the standard TradeTick. Suggest mapping is_buyer_maker to the AggressorSide.
+
+#### **2.2 The Strategy Actor AlphaStrategy)**
+
+Define the class structure for class AlphaStrategy(Strategy): inheriting from nautilus_trader.trading.strategy.Strategy [4].
+
+*   **Initialization on_start):** Show how to subscribe to three different data streams simultaneously:
+
+    *   self.subscribe_bars(BarType)
+
+    *   self.subscribe_quote_ticks(InstrumentId)
+
+    *   self.subscribe_trade_ticks(InstrumentId)
+
+*   **State Management:** Define the internal buffers (e.g., Deqeue or CircularBuffer) required to calculate rolling VPIN and Volatility without re-calculating the entire history on every tick.
+
+#### **2.3 Event-Driven Logic (The "Hot Loop")**
+
+Provide detailed logic diagrams and pseudo-code for the event handlers:
+
+1.  *on_bar(self, bar: Bar):** Trigger the **Yang-Zhang** update. Is this calculation heavy? If so, explain how to optimize it to avoid blocking the actor.
+
+2.  *on_trade_tick(self, tick: TradeTick):**
+
+    *   Logic: Update volume buckets. Check if the bucket matches the VPIN volume threshold.
+
+    *   Logic: If VPIN > Threshold, emit a Signal.
+
+3.  *on_quote_tick(self, quote: QuoteTick):**
+
+    *   Logic: Update Bid-Ask Spread state.
+
+    *   Crucial: Explain how to synchronize this with TradeTick data (e.g., do we use the timestamp ts_event to align data streams?).
+
+#### **2.4 Signal Generation & Execution Routing**
+
+*   **Signal Output:** Define a custom event class VolatilitySignal(Data) [4] that the strategy publishes to the MessageBus.
+
+*   **Execution:** Describe how an **Execution Algorithm** (e.g., TWAP) subscribes to this signal.
+
+    *   If VolatilitySignal.regime == HIGH_VARIANCE: Reduce TWAP interval (execute faster).
+
+    *   If VolatilitySignal.regime == LOW_LIQUIDITY: Pause execution.
+
+---
+
+### **Output Format Rules**
+
+1.  **Professional Tone:** Use specific Nautilus terminology InstrumentId, BarType, DataEngine).
+
+2.  **Visuals:** Provide an ASCII sequence diagram showing the flow of a single TradeTick from CSV -> DataEngine -> Strategy.on_trade_tick -> VPIN Calculation -> Order Submission.
+
+3.  **Math-to-Code Translation:** Explicitly comment on where the equations from Chapter 1 are implemented in the code structure.
+
+**Begin generating Chapter 2 now.**
+```
