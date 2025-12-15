@@ -1,0 +1,1998 @@
+=== FILE: pyproject.toml ===
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phoenix-phase4"
+version = "0.1.0"
+description = "Phase 4: NautilusTrader backtesting pipeline + experiment orchestration (offline binance.vision via Phase 2 catalog)"
+requires-python = ">=3.11"
+dependencies = [
+  "PyYAML>=6.0.1",
+  "pandas>=2.0.0",
+]
+
+[project.scripts]
+phoenix-phase4 = "phoenix_phase4.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+filterwarnings = [
+  "ignore::DeprecationWarning",
+]
+=== END FILE ===
+
+=== FILE: src/phoenix_phase4/__init__.py ===
+from __future__ import annotations
+
+__all__ = ["__version__"]
+
+__version__ = "0.1.0"
+=== END FILE ===
+
+=== FILE: src/phoenix_phase4/nautilus_compat.py ===
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass(frozen=True)
+class NautilusPhase4Imports:
+    # Backtest orchestration
+    BacktestNode: Any
+    BacktestRunConfig: Any
+    BacktestEngineConfig: Any
+    BacktestVenueConfig: Any
+    BacktestDataConfig: Any
+
+    # Config helpers
+    ImportableStrategyConfig: Any
+    LoggingConfig: Any
+
+    # Identifiers / model objects
+    Venue: Any
+    InstrumentId: Any
+    Symbol: Any
+
+    # Instruments / objects
+    CryptoPerpetual: Any
+    Price: Any
+    Quantity: Any
+
+    # Core data classes
+    QuoteTick: Any
+    TradeTick: Any
+    Bar: Any
+    BarType: Any
+
+    # Persistence
+    ParquetDataCatalog: Any
+
+
+def load_nautilus_phase4_imports() -> NautilusPhase4Imports:
+    # -----------------------
+    # Backtest orchestrators
+    # -----------------------
+    from nautilus_trader.backtest.node import BacktestNode  # type: ignore
+
+    # Backtest configs may be re-exported; prefer backtest.config then fallback to config.
+    try:
+        from nautilus_trader.backtest.config import (  # type: ignore
+            BacktestDataConfig,
+            BacktestEngineConfig,
+            BacktestRunConfig,
+            BacktestVenueConfig,
+        )
+    except Exception:
+        from nautilus_trader.config import (  # type: ignore
+            BacktestDataConfig,
+            BacktestEngineConfig,
+            BacktestRunConfig,
+            BacktestVenueConfig,
+        )
+
+    # -----------------------
+    # Importable StrategyConfig
+    # -----------------------
+    try:
+        from nautilus_trader.config import ImportableStrategyConfig  # type: ignore
+    except Exception:
+        from nautilus_trader.backtest.config import ImportableStrategyConfig  # type: ignore
+
+    # -----------------------
+    # Logging config
+    # -----------------------
+    try:
+        from nautilus_trader.config import LoggingConfig  # type: ignore
+    except Exception:
+        from nautilus_trader.common.config import LoggingConfig  # type: ignore
+
+    # -----------------------
+    # Identifiers
+    # -----------------------
+    try:
+        from nautilus_trader.model.identifiers import InstrumentId, Symbol, Venue  # type: ignore
+    except Exception:
+        from nautilus_trader.model import InstrumentId, Symbol, Venue  # type: ignore
+
+    # -----------------------
+    # Instruments / objects
+    # -----------------------
+    from nautilus_trader.model.objects import Price, Quantity  # type: ignore
+
+    try:
+        from nautilus_trader.model.instruments import CryptoPerpetual  # type: ignore
+    except Exception as e:
+        raise ImportError(
+            "Could not import nautilus_trader.model.instruments.CryptoPerpetual. "
+            "Phase 4 preflight requires this class (per provided Phase 4 context)."
+        ) from e
+
+    # -----------------------
+    # Core data classes
+    # -----------------------
+    from nautilus_trader.model.data import Bar, BarType, QuoteTick, TradeTick  # type: ignore
+
+    # -----------------------
+    # Persistence
+    # -----------------------
+    try:
+        from nautilus_trader.persistence.catalog.parquet import ParquetDataCatalog  # type: ignore
+    except Exception:
+        from nautilus_trader.persistence.catalog import ParquetDataCatalog  # type: ignore
+
+    return NautilusPhase4Imports(
+        BacktestNode=BacktestNode,
+        BacktestRunConfig=BacktestRunConfig,
+        BacktestEngineConfig=BacktestEngineConfig,
+        BacktestVenueConfig=BacktestVenueConfig,
+        BacktestDataConfig=BacktestDataConfig,
+        ImportableStrategyConfig=ImportableStrategyConfig,
+        LoggingConfig=LoggingConfig,
+        Venue=Venue,
+        InstrumentId=InstrumentId,
+        Symbol=Symbol,
+        CryptoPerpetual=CryptoPerpetual,
+        Price=Price,
+        Quantity=Quantity,
+        QuoteTick=QuoteTick,
+        TradeTick=TradeTick,
+        Bar=Bar,
+        BarType=BarType,
+        ParquetDataCatalog=ParquetDataCatalog,
+    )
+=== END FILE ===
+
+=== FILE: src/phoenix_phase4/time_utils.py ===
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Final
+
+
+UTC = timezone.utc
+
+
+class TimeParseError(ValueError):
+    pass
+
+
+_ISO_Z_RE: Final[re.Pattern[str]] = re.compile(r"Z$", re.IGNORECASE)
+_DURATION_RE: Final[re.Pattern[str]] = re.compile(r"^\s*(?P<value>-?\d+(?:\.\d+)?)\s*(?P<unit>ms|s|m|h|d)\s*$", re.IGNORECASE)
+
+
+def parse_utc_datetime(value: str) -> datetime:
+    """
+    Parse an ISO-8601-ish string into a UTC-aware datetime.
+
+    Accepts:
+      - "YYYY-MM-DDTHH:MM:SSZ"
+      - "YYYY-MM-DDTHH:MM:SS.sssZ"
+      - "YYYY-MM-DD HH:MM:SS"
+      - with timezone offsets
+
+    Returns an aware datetime in UTC.
+    """
+    s = (value or "").strip()
+    if not s:
+        raise TimeParseError("empty datetime string")
+
+    s = _ISO_Z_RE.sub("+00:00", s)
+    if " " in s and "T" not in s:
+        s = s.replace(" ", "T", 1)
+
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError as e:
+        raise TimeParseError(f"invalid datetime: {value!r}") from e
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    else:
+        dt = dt.astimezone(UTC)
+    return dt
+
+
+def format_utc_datetime(dt: datetime) -> str:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    dt = dt.astimezone(UTC)
+    # Always emit Z suffix for stability.
+    return dt.isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
+def parse_duration(value: str) -> timedelta:
+    """
+    Parse a compact duration string like:
+      - "0s", "250ms", "10s", "5m", "6h", "1d"
+      - also accepts integer/float with suffix
+
+    Returns timedelta.
+    """
+    s = (value or "").strip()
+    if not s:
+        raise TimeParseError("empty duration string")
+    if s == "0":
+        return timedelta(0)
+
+    m = _DURATION_RE.match(s)
+    if not m:
+        raise TimeParseError(f"invalid duration: {value!r}")
+
+    v = float(m.group("value"))
+    unit = m.group("unit").lower()
+
+    if unit == "ms":
+        return timedelta(milliseconds=v)
+    if unit == "s":
+        return timedelta(seconds=v)
+    if unit == "m":
+        return timedelta(minutes=v)
+    if unit == "h":
+        return timedelta(hours=v)
+    if unit == "d":
+        return timedelta(days=v)
+
+    raise TimeParseError(f"unsupported duration unit: {unit!r}")
+
+
+@dataclass(frozen=True)
+class TimeRange:
+    start: datetime
+    end: datetime  # end-exclusive
+
+    def validate(self) -> None:
+        if self.start.tzinfo is None or self.end.tzinfo is None:
+            raise ValueError("TimeRange datetimes must be timezone-aware")
+        if self.start >= self.end:
+            raise ValueError(f"invalid TimeRange: start={self.start} >= end={self.end}")
+
+    def to_iso(self) -> tuple[str, str]:
+        return format_utc_datetime(self.start), format_utc_datetime(self.end)
+=== END FILE ===
+
+=== FILE: src/phoenix_phase4/determinism.py ===
+from __future__ import annotations
+
+import os
+import random
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass(frozen=True)
+class DeterminismConfig:
+    seed: int = 0
+    set_hash_seed_hint: bool = True
+
+
+def set_global_determinism(cfg: DeterminismConfig) -> dict[str, Any]:
+    """
+    Best-effort determinism controls.
+
+    Notes:
+      - PYTHONHASHSEED must be set *before* process start to be fully effective.
+      - Nautilus may create non-deterministic IDs depending on configuration.
+        Phase 4 tests avoid trades to ensure determinism at artifact level.
+    """
+    random.seed(cfg.seed)
+    try:
+        import numpy as np  # type: ignore
+
+        np.random.seed(cfg.seed)
+    except Exception:
+        pass
+
+    env: dict[str, Any] = {
+        "seed": cfg.seed,
+        "pythonhashseed": os.environ.get("PYTHONHASHSEED"),
+    }
+    if cfg.set_hash_seed_hint and env["pythonhashseed"] is None:
+        env["pythonhashseed_hint"] = "Set PYTHONHASHSEED=0 in the environment for stronger determinism."
+    return env
+=== END FILE ===
+
+=== FILE: src/phoenix_phase4/config.py ===
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Literal
+
+import yaml
+
+from phoenix_phase4.time_utils import TimeRange, parse_duration, parse_utc_datetime
+
+
+SchemaVersion = Literal["1"]
+RunMode = Literal["single", "walk_forward"]
+StrategyName = Literal["ema_cross_baseline", "phoenix_lpi"]
+
+
+@dataclass(frozen=True)
+class CatalogConfig:
+    path: str
+    manifest_path: str | None = None
+    instrument_specs_path: str | None = None
+
+
+@dataclass(frozen=True)
+class OutputConfig:
+    dir: str = "./runs"
+    suite_name: str | None = None
+    overwrite: bool = False
+
+
+@dataclass(frozen=True)
+class UniverseConfig:
+    venue: str = "BINANCE"
+    instrument_ids: list[str] = field(default_factory=lambda: ["BTCUSDT.BINANCE"])
+
+    oms_type: str = "NETTING"
+    account_type: str = "MARGIN"
+    base_currency: str = "USDT"
+    starting_balances: list[str] = field(default_factory=lambda: ["10000 USDT"])
+
+
+@dataclass(frozen=True)
+class DataConfig:
+    include: list[str] = field(
+        default_factory=lambda: [
+            "QuoteTick",
+            "TradeTick",
+            "Bar",
+            "BinanceOiMetrics",
+            "BinanceFundingRate",
+            "BinanceBookDepthPct",
+        ],
+    )
+
+
+@dataclass(frozen=True)
+class TimeConfig:
+    start_utc: str = "2023-05-16T00:00:00Z"
+    end_utc: str = "2023-05-17T00:00:00Z"  # end-exclusive by contract
+    warmup: str = "0s"  # extends data-start earlier than run-start
+
+    def range(self) -> TimeRange:
+        tr = TimeRange(
+            start=parse_utc_datetime(self.start_utc),
+            end=parse_utc_datetime(self.end_utc),
+        )
+        tr.validate()
+        return tr
+
+
+@dataclass(frozen=True)
+class WalkForwardConfig:
+    train: str = "7d"
+    test: str = "1d"
+    step: str = "1d"
+    purge: str = "0s"
+    embargo: str = "0s"
+    max_folds: int | None = None
+
+
+@dataclass(frozen=True)
+class ModeConfig:
+    kind: RunMode = "single"
+    walk_forward: WalkForwardConfig = field(default_factory=WalkForwardConfig)
+
+
+@dataclass(frozen=True)
+class StrategySpec:
+    name: StrategyName = "ema_cross_baseline"
+    config: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Phase4SuiteConfig:
+    schema_version: SchemaVersion = "1"
+    catalog: CatalogConfig = field(default_factory=lambda: CatalogConfig(path="./data/catalog/phoenix_um_btcusdt"))
+    output: OutputConfig = field(default_factory=OutputConfig)
+    universe: UniverseConfig = field(default_factory=UniverseConfig)
+    data: DataConfig = field(default_factory=DataConfig)
+    time: TimeConfig = field(default_factory=TimeConfig)
+    mode: ModeConfig = field(default_factory=ModeConfig)
+    strategy: StrategySpec = field(default_factory=StrategySpec)
+
+    determinism_seed: int = 0
+
+    def resolved_suite_id(self) -> str:
+        """
+        Stable suite ID: hash of config with output.dir omitted (so you can rerun to new folder).
+        """
+        obj = to_primitive_dict(self)
+        # Remove output dir from hash input to avoid changing ID based on filesystem location.
+        obj.get("output", {}).pop("dir", None)
+        payload = json.dumps(obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()[:16]
+
+
+def to_primitive_dict(cfg: Any) -> dict[str, Any]:
+    """
+    Convert dataclass config to primitive dict (safe for hashing and serialization).
+    """
+    if hasattr(cfg, "__dict__") and not isinstance(cfg, dict):
+        # dataclass-like
+        d: dict[str, Any] = {}
+        for k, v in cfg.__dict__.items():
+            d[k] = to_primitive_value(v)
+        return d
+    if isinstance(cfg, dict):
+        return {str(k): to_primitive_value(v) for k, v in cfg.items()}
+    raise TypeError(f"unsupported cfg type: {type(cfg)}")
+
+
+def to_primitive_value(v: Any) -> Any:
+    if isinstance(v, (str, int, float, bool)) or v is None:
+        return v
+    if isinstance(v, list):
+        return [to_primitive_value(x) for x in v]
+    if isinstance(v, dict):
+        return {str(k): to_primitive_value(x) for k, x in v.items()}
+    if hasattr(v, "__dict__"):
+        return to_primitive_dict(v)
+    return str(v)
+
+
+def load_suite_config(path: str) -> Phase4SuiteConfig:
+    p = Path(path).expanduser().resolve()
+    raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("Phase 4 config must be a YAML mapping")
+
+    schema_version = str(raw.get("schema_version", "1"))
+    if schema_version != "1":
+        raise ValueError(f"Unsupported schema_version={schema_version!r}")
+
+    catalog_raw = raw.get("catalog", {}) or {}
+    output_raw = raw.get("output", {}) or {}
+    universe_raw = raw.get("universe", {}) or {}
+    data_raw = raw.get("data", {}) or {}
+    time_raw = raw.get("time", {}) or {}
+    mode_raw = raw.get("mode", {}) or {}
+    strategy_raw = raw.get("strategy", {}) or {}
+
+    cfg = Phase4SuiteConfig(
+        schema_version="1",
+        catalog=CatalogConfig(
+            path=str(catalog_raw.get("path")),
+            manifest_path=(str(catalog_raw.get("manifest_path")) if catalog_raw.get("manifest_path") else None),
+            instrument_specs_path=(
+                str(catalog_raw.get("instrument_specs_path")) if catalog_raw.get("instrument_specs_path") else None
+            ),
+        ),
+        output=OutputConfig(
+            dir=str(output_raw.get("dir", "./runs")),
+            suite_name=(str(output_raw.get("suite_name")) if output_raw.get("suite_name") else None),
+            overwrite=bool(output_raw.get("overwrite", False)),
+        ),
+        universe=UniverseConfig(
+            venue=str(universe_raw.get("venue", "BINANCE")),
+            instrument_ids=list(universe_raw.get("instrument_ids", ["BTCUSDT.BINANCE"])),
+            oms_type=str(universe_raw.get("oms_type", "NETTING")),
+            account_type=str(universe_raw.get("account_type", "MARGIN")),
+            base_currency=str(universe_raw.get("base_currency", "USDT")),
+            starting_balances=list(universe_raw.get("starting_balances", ["10000 USDT"])),
+        ),
+        data=DataConfig(
+            include=list(
+                data_raw.get(
+                    "include",
+                    [
+                        "QuoteTick",
+                        "TradeTick",
+                        "Bar",
+                        "BinanceOiMetrics",
+                        "BinanceFundingRate",
+                        "BinanceBookDepthPct",
+                    ],
+                ),
+            ),
+        ),
+        time=TimeConfig(
+            start_utc=str(time_raw.get("start_utc", "2023-05-16T00:00:00Z")),
+            end_utc=str(time_raw.get("end_utc", "2023-05-17T00:00:00Z")),
+            warmup=str(time_raw.get("warmup", "0s")),
+        ),
+        mode=ModeConfig(
+            kind=str(mode_raw.get("kind", "single")),
+            walk_forward=WalkForwardConfig(
+                train=str((mode_raw.get("walk_forward") or {}).get("train", "7d")),
+                test=str((mode_raw.get("walk_forward") or {}).get("test", "1d")),
+                step=str((mode_raw.get("walk_forward") or {}).get("step", "1d")),
+                purge=str((mode_raw.get("walk_forward") or {}).get("purge", "0s")),
+                embargo=str((mode_raw.get("walk_forward") or {}).get("embargo", "0s")),
+                max_folds=(mode_raw.get("walk_forward") or {}).get("max_folds"),
+            ),
+        ),
+        strategy=StrategySpec(
+            name=str(strategy_raw.get("name", "ema_cross_baseline")),
+            config=dict(strategy_raw.get("config", {}) or {}),
+        ),
+        determinism_seed=int(raw.get("determinism_seed", 0)),
+    )
+
+    # Validate time range
+    _ = cfg.time.range()
+
+    # Validate mode
+    if cfg.mode.kind not in ("single", "walk_forward"):
+        raise ValueError(f"Unsupported mode.kind={cfg.mode.kind!r}")
+
+    # Validate strategy name
+    if cfg.strategy.name not in ("ema_cross_baseline", "phoenix_lpi"):
+        raise ValueError(f"Unsupported strategy.name={cfg.strategy.name!r}")
+
+    return cfg
+
+
+def warmup_start_for(run_start_utc: str, warmup: str) -> str:
+    dt = parse_utc_datetime(run_start_utc)
+    d = parse_duration(warmup)
+    start = dt - d
+    return start.isoformat(timespec="microseconds").replace("+00:00", "Z")
+=== END FILE ===
+
+=== FILE: src/phoenix_phase4/instrument_preflight.py ===
+from __future__ import annotations
+
+from dataclasses import dataclass
+from decimal import Decimal
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from phoenix_phase4.nautilus_compat import NautilusPhase4Imports
+
+
+class InstrumentSpecError(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class InstrumentSpec:
+    instrument_id: str
+    raw_symbol: str
+    base_currency: str
+    quote_currency: str
+    settlement_currency: str
+    is_inverse: bool
+    price_precision: int
+    size_precision: int
+    price_increment: str
+    size_increment: str
+    maker_fee: str
+    taker_fee: str
+
+
+def _load_currency_obj(code: str) -> Any:
+    """
+    Best-effort resolve Currency singleton from nautilus_trader.model.currencies.
+    For initial Phase 4 acceptance, BTC/USDT is sufficient.
+    """
+    code = (code or "").strip().upper()
+    if not code:
+        raise InstrumentSpecError("empty currency code")
+
+    try:
+        mod = __import__("nautilus_trader.model.currencies", fromlist=[code])
+        cur = getattr(mod, code, None)
+        if cur is None:
+            raise InstrumentSpecError(f"Currency {code!r} not found in nautilus_trader.model.currencies")
+        return cur
+    except Exception as e:
+        raise InstrumentSpecError(f"Failed to resolve currency code {code!r}: {e}") from e
+
+
+def load_instrument_specs(path: str) -> dict[str, InstrumentSpec]:
+    p = Path(path).expanduser().resolve()
+    raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+    if raw is None:
+        raise InstrumentSpecError("instrument_specs.yaml is empty")
+    if not isinstance(raw, dict):
+        raise InstrumentSpecError("instrument_specs.yaml must be a YAML mapping")
+
+    items = raw.get("instruments")
+    if not isinstance(items, list) or not items:
+        raise InstrumentSpecError("instrument_specs.yaml must contain a non-empty 'instruments' list")
+
+    out: dict[str, InstrumentSpec] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            raise InstrumentSpecError("each instrument spec must be a mapping")
+
+        inst_id = str(item.get("instrument_id") or "").strip()
+        if not inst_id:
+            raise InstrumentSpecError("instrument spec missing 'instrument_id'")
+
+        spec = InstrumentSpec(
+            instrument_id=inst_id,
+            raw_symbol=str(item.get("raw_symbol") or inst_id.split(".")[0]).strip(),
+            base_currency=str(item.get("base_currency") or "BTC").strip(),
+            quote_currency=str(item.get("quote_currency") or "USDT").strip(),
+            settlement_currency=str(item.get("settlement_currency") or str(item.get("quote_currency") or "USDT")).strip(),
+            is_inverse=bool(item.get("is_inverse", False)),
+            price_precision=int(item.get("price_precision")),
+            size_precision=int(item.get("size_precision")),
+            price_increment=str(item.get("price_increment")).strip(),
+            size_increment=str(item.get("size_increment")).strip(),
+            maker_fee=str(item.get("maker_fee")).strip(),
+            taker_fee=str(item.get("taker_fee")).strip(),
+        )
+        out[spec.instrument_id] = spec
+
+    return out
+
+
+def ensure_instruments_in_catalog(
+    N: NautilusPhase4Imports,
+    *,
+    catalog_path: str,
+    instrument_specs_path: str,
+    instrument_ids: list[str],
+) -> None:
+    """
+    Phase 4 preflight:
+      - Ensure required instruments exist in the ParquetDataCatalog.
+      - If missing, create CryptoPerpetual using instrument_specs.yaml and write to catalog.
+
+    This is idempotent.
+    """
+    specs = load_instrument_specs(instrument_specs_path)
+    catalog = N.ParquetDataCatalog(str(Path(catalog_path).expanduser().resolve()))
+
+    for inst_id_str in instrument_ids:
+        inst_id_str = str(inst_id_str).strip()
+        if not inst_id_str:
+            continue
+
+        # If already present, skip.
+        try:
+            existing = catalog.instruments(instrument_ids=[inst_id_str])
+        except Exception:
+            # Some versions might accept InstrumentId objects; try that.
+            existing = catalog.instruments(instrument_ids=[N.InstrumentId.from_str(inst_id_str).value])
+
+        if existing:
+            continue
+
+        spec = specs.get(inst_id_str)
+        if spec is None:
+            raise InstrumentSpecError(
+                f"instrument_specs.yaml is missing a spec for {inst_id_str!r}. "
+                f"Provide it under instruments[].instrument_id."
+            )
+
+        instrument = _build_crypto_perpetual_from_spec(N, spec)
+        catalog.write_data([instrument])
+
+
+def _build_crypto_perpetual_from_spec(N: NautilusPhase4Imports, spec: InstrumentSpec) -> Any:
+    inst_id = N.InstrumentId.from_str(spec.instrument_id)
+
+    base = _load_currency_obj(spec.base_currency)
+    quote = _load_currency_obj(spec.quote_currency)
+    settlement = _load_currency_obj(spec.settlement_currency)
+
+    # Symbol-like wrapper
+    raw_symbol = N.Symbol(spec.raw_symbol)
+
+    instrument = N.CryptoPerpetual(
+        instrument_id=inst_id,
+        raw_symbol=raw_symbol,
+        base_currency=base,
+        quote_currency=quote,
+        settlement_currency=settlement,
+        is_inverse=bool(spec.is_inverse),
+        price_precision=int(spec.price_precision),
+        size_precision=int(spec.size_precision),
+        price_increment=N.Price.from_str(spec.price_increment),
+        size_increment=N.Quantity.from_str(spec.size_increment),
+        ts_event=0,
+        ts_init=0,
+        maker_fee=Decimal(spec.maker_fee),
+        taker_fee=Decimal(spec.taker_fee),
+    )
+    return instrument
+=== END FILE ===
+
+=== FILE: src/phoenix_phase4/walkforward.py ===
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Iterator
+
+from phoenix_phase4.time_utils import TimeRange, format_utc_datetime
+
+
+@dataclass(frozen=True)
+class WalkForwardFold:
+    fold_index: int
+
+    train_range: TimeRange
+    test_range: TimeRange
+
+    purge: timedelta
+    embargo: timedelta
+
+    def to_id_str(self) -> str:
+        ts, te = self.test_range.start, self.test_range.end
+        return f"fold_{self.fold_index:04d}_test_{ts:%Y%m%dT%H%M%SZ}_{te:%Y%m%dT%H%M%SZ}"
+
+    def to_iso(self) -> dict[str, str]:
+        tr_s, tr_e = self.train_range.to_iso()
+        te_s, te_e = self.test_range.to_iso()
+        return {
+            "train_start_utc": tr_s,
+            "train_end_utc": tr_e,
+            "test_start_utc": te_s,
+            "test_end_utc": te_e,
+        }
+
+
+def iter_walk_forward_folds(
+    *,
+    overall: TimeRange,
+    train: timedelta,
+    test: timedelta,
+    step: timedelta,
+    purge: timedelta,
+    embargo: timedelta,
+    max_folds: int | None = None,
+) -> Iterator[WalkForwardFold]:
+    """
+    Generates folds with:
+      - train: [t, t+train)
+      - purge gap: (t+train, t+train+purge)
+      - test: [t+train+purge, t+train+purge+test)
+
+    Next fold starts at:
+      max(t+step, test_end + embargo)
+    """
+    overall.validate()
+
+    if train <= timedelta(0) or test <= timedelta(0) or step <= timedelta(0):
+        raise ValueError("train/test/step must be positive durations")
+    if purge < timedelta(0) or embargo < timedelta(0):
+        raise ValueError("purge/embargo must be non-negative")
+
+    t = overall.start
+    i = 0
+    while True:
+        train_start = t
+        train_end = train_start + train
+
+        test_start = train_end + purge
+        test_end = test_start + test
+
+        if test_end > overall.end:
+            break
+
+        fold = WalkForwardFold(
+            fold_index=i,
+            train_range=TimeRange(train_start, train_end),
+            test_range=TimeRange(test_start, test_end),
+            purge=purge,
+            embargo=embargo,
+        )
+        yield fold
+
+        i += 1
+        if max_folds is not None and i >= int(max_folds):
+            break
+
+        next_start = train_start + step
+        embargo_floor = test_end + embargo
+        if next_start < embargo_floor:
+            next_start = embargo_floor
+        t = next_start
+
+
+def fold_summary_dict(fold: WalkForwardFold) -> dict[str, object]:
+    return {
+        "fold_index": fold.fold_index,
+        **fold.to_iso(),
+        "purge_seconds": float(fold.purge.total_seconds()),
+        "embargo_seconds": float(fold.embargo.total_seconds()),
+        "fold_id": fold.to_id_str(),
+    }
+
+
+def time_range_to_iso_dict(name: str, tr: TimeRange) -> dict[str, str]:
+    return {
+        f"{name}_start_utc": format_utc_datetime(tr.start),
+        f"{name}_end_utc": format_utc_datetime(tr.end),
+    }
+=== END FILE ===
+
+=== FILE: src/phoenix_phase4/strategy_factory.py ===
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Any
+
+from phoenix_phase4.nautilus_compat import NautilusPhase4Imports
+
+
+class StrategyFactoryError(ValueError):
+    pass
+
+
+def build_importable_strategies(
+    N: NautilusPhase4Imports,
+    *,
+    strategy_name: str,
+    strategy_config: dict[str, Any],
+    instrument_ids: list[str],
+) -> list[Any]:
+    """
+    Build ImportableStrategyConfig list for known Phase 3 strategies only.
+    """
+    if not instrument_ids:
+        raise StrategyFactoryError("No instrument_ids provided")
+
+    # Phase 1 acceptance baseline is single instrument; support N instruments by instantiating per instrument.
+    strategies: list[Any] = []
+
+    for inst_str in instrument_ids:
+        inst = N.InstrumentId.from_str(inst_str)
+
+        if strategy_name == "ema_cross_baseline":
+            strategies.append(_build_ema_cross_baseline(N, inst, inst_str, strategy_config))
+        elif strategy_name == "phoenix_lpi":
+            strategies.append(_build_phoenix_lpi(N, inst, strategy_config))
+        else:
+            raise StrategyFactoryError(f"Unsupported strategy_name={strategy_name!r}")
+
+    return strategies
+
+
+def _build_ema_cross_baseline(
+    N: NautilusPhase4Imports,
+    inst: Any,
+    inst_str: str,
+    cfg: dict[str, Any],
+) -> Any:
+    # Required
+    trade_size = _require_decimal(cfg, "trade_size")
+
+    # BarType: Phase 2 stores klines_1m as BarType "...-1-MINUTE-LAST-EXTERNAL"
+    bar_type = N.BarType.from_str(f"{inst_str}-1-MINUTE-LAST-EXTERNAL")
+
+    # Optional params
+    fast_ema_period = int(cfg.get("fast_ema_period", 10))
+    slow_ema_period = int(cfg.get("slow_ema_period", 20))
+    request_historical_bars = bool(cfg.get("request_historical_bars", False))
+    close_positions_on_stop = bool(cfg.get("close_positions_on_stop", True))
+
+    # TimeInForce handling: pass enum if provided as string.
+    order_time_in_force = cfg.get("order_time_in_force", None)
+    if order_time_in_force is not None:
+        try:
+            from nautilus_trader.model.enums import TimeInForce  # type: ignore
+
+            tif = TimeInForce[str(order_time_in_force)]
+        except Exception:
+            tif = None
+    else:
+        tif = None
+
+    config_obj: dict[str, Any] = {
+        "instrument_id": inst,
+        "bar_type": bar_type,
+        "trade_size": trade_size,
+        "fast_ema_period": fast_ema_period,
+        "slow_ema_period": slow_ema_period,
+        "request_historical_bars": request_historical_bars,
+        "close_positions_on_stop": close_positions_on_stop,
+    }
+    if tif is not None:
+        config_obj["order_time_in_force"] = tif
+
+    return N.ImportableStrategyConfig(
+        strategy_path="phoenix_research.strategies.ema_cross_baseline:EmaCrossBaseline",
+        config_path="phoenix_research.strategies.ema_cross_baseline:EmaCrossBaselineConfig",
+        config=config_obj,
+    )
+
+
+def _build_phoenix_lpi(
+    N: NautilusPhase4Imports,
+    inst: Any,
+    cfg: dict[str, Any],
+) -> Any:
+    trade_size = _require_decimal(cfg, "trade_size")
+
+    # Pass through Phase 3 config keys with proper typing on required primitives.
+    # Keep strict to avoid silently accepting misspelled keys.
+    config_obj: dict[str, Any] = {
+        "instrument_id": inst,
+        "trade_size": trade_size,
+    }
+
+    # Allowed keys (Phase 3 PhoenixLpiStrategyConfig)
+    allowed = {
+        # Bucketing / signal config
+        "bucket_mode",
+        "bucket_interval_ms",
+        "bucket_notional_threshold",
+        "eta_bps",
+        "use_depth_pct",
+        "depth_pct_abs",
+        "use_zscore",
+        "z_window_buckets",
+        "z_kind",
+        "z_min_count",
+        "lambda_ld",
+        "lambda_exh_liq",
+        "lambda_exh_spr",
+        # Entry thresholds
+        "theta_lpi",
+        "theta_exh_low",
+        "theta_exh_high",
+        # Exit thresholds
+        "lpi_exit_abs",
+        # Risk / gates
+        "max_rel_spread_bps",
+        "min_depth_notional",
+        "quote_max_age_ms",
+        "depth_max_age_ms",
+        # Execution
+        "momentum_use_market",
+        "mean_rev_post_only",
+        "mean_rev_improve_ticks",
+        "entry_ttl_buckets",
+        # Holding limits
+        "max_hold_buckets_momentum",
+        "max_hold_buckets_mean_rev",
+        "close_positions_on_stop",
+        "reduce_only_on_stop",
+    }
+
+    for k, v in cfg.items():
+        if k in ("instrument_id", "trade_size"):
+            continue
+        if k not in allowed:
+            raise StrategyFactoryError(f"Unsupported PhoenixLpiStrategyConfig key: {k!r}")
+
+        config_obj[k] = v
+
+    return N.ImportableStrategyConfig(
+        strategy_path="phoenix_research.strategies.phoenix_lpi:PhoenixLpiStrategy",
+        config_path="phoenix_research.strategies.phoenix_lpi:PhoenixLpiStrategyConfig",
+        config=config_obj,
+    )
+
+
+def _require_decimal(cfg: dict[str, Any], key: str) -> Decimal:
+    if key not in cfg:
+        raise StrategyFactoryError(f"Missing required strategy.config.{key}")
+    v = cfg[key]
+    if isinstance(v, Decimal):
+        return v
+    if isinstance(v, (int, float)):
+        return Decimal(str(v))
+    if isinstance(v, str):
+        return Decimal(v.strip())
+    raise StrategyFactoryError(f"Invalid decimal for {key!r}: {v!r}")
+=== END FILE ===
+
+=== FILE: src/phoenix_phase4/data_factory.py ===
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
+
+from phoenix_phase4.nautilus_compat import NautilusPhase4Imports
+from phoenix_phase4.time_utils import TimeRange, format_utc_datetime
+
+
+class DataFactoryError(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class DataLoadPlan:
+    catalog_path: str
+    instrument_ids: list[str]
+    include: list[str]
+    data_range: TimeRange  # what to load from catalog (may include warmup)
+    run_range: TimeRange  # what to run (BacktestRunConfig start/end)
+
+    def to_debug_dict(self) -> dict[str, object]:
+        ds, de = self.data_range.to_iso()
+        rs, re = self.run_range.to_iso()
+        return {
+            "catalog_path": self.catalog_path,
+            "instrument_ids": list(self.instrument_ids),
+            "include": list(self.include),
+            "data_start_utc": ds,
+            "data_end_utc": de,
+            "run_start_utc": rs,
+            "run_end_utc": re,
+        }
+
+
+def build_backtest_data_configs(N: NautilusPhase4Imports, plan: DataLoadPlan) -> list[Any]:
+    """
+    Create BacktestDataConfig objects for the selected data streams.
+
+    Important:
+      - This pipeline only consumes Phase 2 ParquetDataCatalog artifacts.
+      - No raw CSV parsing here.
+    """
+    out: list[Any] = []
+
+    include_set = {s.strip() for s in plan.include if str(s).strip()}
+
+    # Map include keys to data classes.
+    # Custom data classes are provided by Phase 2 (phoenix_etl.custom_data).
+    custom = _load_custom_data_classes()
+
+    ds, de = plan.data_range.to_iso()
+
+    for inst_id in plan.instrument_ids:
+        if "QuoteTick" in include_set:
+            out.append(
+                N.BacktestDataConfig(
+                    catalog_path=plan.catalog_path,
+                    data_cls=N.QuoteTick,
+                    instrument_id=inst_id,
+                    start_time=ds,
+                    end_time=de,
+                ),
+            )
+        if "TradeTick" in include_set:
+            out.append(
+                N.BacktestDataConfig(
+                    catalog_path=plan.catalog_path,
+                    data_cls=N.TradeTick,
+                    instrument_id=inst_id,
+                    start_time=ds,
+                    end_time=de,
+                ),
+            )
+        if "Bar" in include_set:
+            out.append(
+                N.BacktestDataConfig(
+                    catalog_path=plan.catalog_path,
+                    data_cls=N.Bar,
+                    instrument_id=inst_id,
+                    start_time=ds,
+                    end_time=de,
+                ),
+            )
+
+        if "BinanceOiMetrics" in include_set:
+            out.append(
+                N.BacktestDataConfig(
+                    catalog_path=plan.catalog_path,
+                    data_cls=custom["BinanceOiMetrics"],
+                    instrument_id=inst_id,
+                    start_time=ds,
+                    end_time=de,
+                ),
+            )
+        if "BinanceFundingRate" in include_set:
+            out.append(
+                N.BacktestDataConfig(
+                    catalog_path=plan.catalog_path,
+                    data_cls=custom["BinanceFundingRate"],
+                    instrument_id=inst_id,
+                    start_time=ds,
+                    end_time=de,
+                ),
+            )
+        if "BinanceBookDepthPct" in include_set:
+            out.append(
+                N.BacktestDataConfig(
+                    catalog_path=plan.catalog_path,
+                    data_cls=custom["BinanceBookDepthPct"],
+                    instrument_id=inst_id,
+                    start_time=ds,
+                    end_time=de,
+                ),
+            )
+
+    return out
+
+
+def _load_custom_data_classes() -> dict[str, Any]:
+    try:
+        from phoenix_etl.custom_data import (  # type: ignore
+            BinanceBookDepthPct,
+            BinanceFundingRate,
+            BinanceOiMetrics,
+        )
+    except Exception as e:
+        raise DataFactoryError(
+            "Failed to import Phase 2 custom data classes from phoenix_etl.custom_data. "
+            "Ensure Phase 2 package is available to Phase 4 runner."
+        ) from e
+
+    return {
+        "BinanceOiMetrics": BinanceOiMetrics,
+        "BinanceFundingRate": BinanceFundingRate,
+        "BinanceBookDepthPct": BinanceBookDepthPct,
+    }
+=== END FILE ===
+
+=== FILE: src/phoenix_phase4/reporting.py ===
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+from typing import Any
+
+import pandas as pd
+
+from phoenix_phase4.nautilus_compat import NautilusPhase4Imports
+
+
+@dataclass(frozen=True)
+class RunReports:
+    orders: pd.DataFrame
+    fills: pd.DataFrame
+    positions: pd.DataFrame
+    account: pd.DataFrame
+
+
+@dataclass(frozen=True)
+class RunPerformance:
+    starting_equity: float | None
+    ending_equity: float | None
+    total_pnl: float | None
+    total_return: float | None
+    max_drawdown: float | None
+    sharpe: float | None
+    deflated_sharpe: float | None
+
+
+@dataclass(frozen=True)
+class RunCounts:
+    orders: int
+    fills: int
+    positions: int
+
+
+def extract_reports(N: NautilusPhase4Imports, engine: Any, *, venue_name: str) -> RunReports:
+    trader = engine.trader
+
+    orders = _safe_report(trader, ["generate_orders_report"])
+    fills = _safe_report(trader, ["generate_fills_report", "generate_order_fills_report"])
+    positions = _safe_report(trader, ["generate_positions_report"])
+
+    venue = N.Venue(str(venue_name))
+    account = _safe_account_report(trader, venue)
+
+    return RunReports(
+        orders=orders,
+        fills=fills,
+        positions=positions,
+        account=account,
+    )
+
+
+def compute_counts(reports: RunReports) -> RunCounts:
+    return RunCounts(
+        orders=int(len(reports.orders)),
+        fills=int(len(reports.fills)),
+        positions=int(len(reports.positions)),
+    )
+
+
+def compute_performance(engine: Any, reports: RunReports) -> RunPerformance:
+    starting_equity, ending_equity, total_pnl, total_return = _equity_from_account_report(reports.account)
+
+    sharpe = None
+    max_dd = None
+
+    # Try Nautilus portfolio analyzer first (authoritative when available)
+    try:
+        stats_returns = engine.portfolio.analyzer.get_performance_stats_returns()
+        stats_general = engine.portfolio.analyzer.get_performance_stats_general()
+
+        sharpe = _first_float(stats_returns, ["sharpe", "sharpe_ratio"])
+        max_dd = _first_float(stats_general, ["max_drawdown", "max_drawdown_pct"])
+    except Exception:
+        pass
+
+    # Fallback: compute from equity series if analyzer stats missing
+    if max_dd is None:
+        max_dd = _max_drawdown_from_account(reports.account)
+    if sharpe is None:
+        sharpe = _sharpe_from_account(reports.account)
+
+    return RunPerformance(
+        starting_equity=starting_equity,
+        ending_equity=ending_equity,
+        total_pnl=total_pnl,
+        total_return=total_return,
+        max_drawdown=max_dd,
+        sharpe=sharpe,
+        deflated_sharpe=None,  # per Phase 4 reference: compute in metrics layer if desired
+    )
+
+
+def _safe_report(trader: Any, method_names: list[str]) -> pd.DataFrame:
+    for name in method_names:
+        fn = getattr(trader, name, None)
+        if fn is None:
+            continue
+        try:
+            out = fn()
+            if isinstance(out, pd.DataFrame):
+                return out
+            # Sometimes returns other tabular types; best-effort convert.
+            return pd.DataFrame(out)
+        except Exception:
+            continue
+    return pd.DataFrame()
+
+
+def _safe_account_report(trader: Any, venue: Any) -> pd.DataFrame:
+    fn = getattr(trader, "generate_account_report", None)
+    if fn is None:
+        return pd.DataFrame()
+    try:
+        out = fn(venue)
+        if isinstance(out, pd.DataFrame):
+            return out
+        return pd.DataFrame(out)
+    except Exception:
+        return pd.DataFrame()
+
+
+def _equity_from_account_report(acct: pd.DataFrame) -> tuple[float | None, float | None, float | None, float | None]:
+    if acct is None or len(acct) == 0:
+        return None, None, None, None
+
+    equity_col_candidates = [
+        "equity",
+        "equity_total",
+        "net_liquidation_value",
+        "balance_total",
+    ]
+    equity_col = next((c for c in equity_col_candidates if c in acct.columns), None)
+    if equity_col is None:
+        return None, None, None, None
+
+    s = pd.to_numeric(acct[equity_col], errors="coerce")
+    s = s.dropna()
+    if len(s) < 2:
+        return None, None, None, None
+
+    start = float(s.iloc[0])
+    end = float(s.iloc[-1])
+    pnl = end - start
+    ret = (end / start - 1.0) if start != 0.0 else None
+    return start, end, pnl, ret
+
+
+def _max_drawdown_from_account(acct: pd.DataFrame) -> float | None:
+    start, end, _, _ = _equity_from_account_report(acct)
+    if start is None:
+        return None
+
+    equity_col_candidates = [
+        "equity",
+        "equity_total",
+        "net_liquidation_value",
+        "balance_total",
+    ]
+    equity_col = next((c for c in equity_col_candidates if c in acct.columns), None)
+    if equity_col is None:
+        return None
+
+    equity = pd.to_numeric(acct[equity_col], errors="coerce").dropna()
+    if len(equity) < 2:
+        return None
+
+    peak = equity.cummax()
+    dd = (equity / peak) - 1.0
+    return float(dd.min())
+
+
+def _sharpe_from_account(acct: pd.DataFrame) -> float | None:
+    equity_col_candidates = [
+        "equity",
+        "equity_total",
+        "net_liquidation_value",
+        "balance_total",
+    ]
+    equity_col = next((c for c in equity_col_candidates if c in acct.columns), None)
+    if equity_col is None:
+        return None
+
+    equity = pd.to_numeric(acct[equity_col], errors="coerce").dropna()
+    if len(equity) < 3:
+        return None
+
+    rets = equity.pct_change().dropna()
+    if len(rets) < 3:
+        return None
+
+    mu = float(rets.mean())
+    sd = float(rets.std(ddof=0))
+    if sd == 0.0:
+        return None
+
+    # Unannualized Sharpe-like statistic: sqrt(n) * mean / std
+    return float(math.sqrt(len(rets)) * (mu / sd))
+
+
+def _first_float(obj: Any, keys: list[str]) -> float | None:
+    if obj is None:
+        return None
+    for k in keys:
+        if isinstance(obj, dict) and k in obj:
+            try:
+                return float(obj[k])
+            except Exception:
+                continue
+    return None
+=== END FILE ===
+
+=== FILE: src/phoenix_phase4/artifacts.py ===
+from __future__ import annotations
+
+import json
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+import yaml
+
+from phoenix_phase4.config import to_primitive_dict
+
+
+def ensure_dir(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def write_yaml(path: Path, obj: Any) -> None:
+    ensure_dir(path.parent)
+    path.write_text(yaml.safe_dump(obj, sort_keys=True), encoding="utf-8")
+
+
+def write_json(path: Path, obj: Any) -> None:
+    ensure_dir(path.parent)
+    path.write_text(json.dumps(obj, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def write_df_csv(path: Path, df: pd.DataFrame) -> None:
+    ensure_dir(path.parent)
+    df2 = df.copy()
+
+    # Best-effort stable ordering by timestamp-like columns if present
+    for col in ("ts_event", "ts_init", "event_time", "timestamp"):
+        if col in df2.columns:
+            try:
+                df2 = df2.sort_values(by=[col], kind="mergesort")
+            except Exception:
+                pass
+            break
+
+    df2.to_csv(path, index=False)
+
+
+def write_run_bundle(
+    *,
+    out_dir: Path,
+    resolved_config: dict[str, Any],
+    manifest_ref: dict[str, Any],
+    reports: dict[str, pd.DataFrame],
+    summary: dict[str, Any],
+) -> None:
+    ensure_dir(out_dir)
+
+    write_yaml(out_dir / "config_resolved.yaml", resolved_config)
+    write_json(out_dir / "manifest_ref.json", manifest_ref)
+
+    # Reports
+    if "orders" in reports:
+        write_df_csv(out_dir / "orders.csv", reports["orders"])
+    if "fills" in reports:
+        write_df_csv(out_dir / "fills.csv", reports["fills"])
+    if "positions" in reports:
+        write_df_csv(out_dir / "positions.csv", reports["positions"])
+    if "account" in reports:
+        write_df_csv(out_dir / "account_report.csv", reports["account"])
+
+    write_json(out_dir / "summary.json", summary)
+
+
+def write_suite_index(out_dir: Path, *, suite_summary: dict[str, Any]) -> None:
+    ensure_dir(out_dir)
+    write_json(out_dir / "aggregate_summary.json", suite_summary)
+=== END FILE ===
+
+=== FILE: src/phoenix_phase4/runner.py ===
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass
+from datetime import timedelta
+from pathlib import Path
+from typing import Any
+
+from phoenix_phase4.artifacts import ensure_dir, write_suite_index, write_yaml
+from phoenix_phase4.config import Phase4SuiteConfig, to_primitive_dict, warmup_start_for
+from phoenix_phase4.data_factory import DataLoadPlan, build_backtest_data_configs
+from phoenix_phase4.determinism import DeterminismConfig, set_global_determinism
+from phoenix_phase4.instrument_preflight import ensure_instruments_in_catalog
+from phoenix_phase4.nautilus_compat import load_nautilus_phase4_imports
+from phoenix_phase4.reporting import compute_counts, compute_performance, extract_reports
+from phoenix_phase4.strategy_factory import build_importable_strategies
+from phoenix_phase4.time_utils import TimeRange, format_utc_datetime, parse_duration
+from phoenix_phase4.walkforward import fold_summary_dict, iter_walk_forward_folds
+
+
+@dataclass(frozen=True)
+class RunResult:
+    run_dir: str
+    summary: dict[str, Any]
+
+
+def run_phase4(cfg: Phase4SuiteConfig) -> list[RunResult]:
+    N = load_nautilus_phase4_imports()
+
+    # Determinism controls
+    det_env = set_global_determinism(DeterminismConfig(seed=int(cfg.determinism_seed)))
+
+    # Output root
+    suite_id = cfg.output.suite_name or cfg.resolved_suite_id()
+    out_root = Path(cfg.output.dir).expanduser().resolve() / suite_id
+
+    if out_root.exists() and not cfg.output.overwrite:
+        raise FileExistsError(f"Output directory exists and overwrite=false: {out_root}")
+
+    ensure_dir(out_root)
+    write_yaml(out_root / "suite_config_resolved.yaml", to_primitive_dict(cfg))
+    write_yaml(out_root / "determinism.yaml", det_env)
+
+    # Instrument preflight (required)
+    if not cfg.catalog.instrument_specs_path:
+        raise ValueError("catalog.instrument_specs_path is required (Phase 4 preflight)")
+    ensure_instruments_in_catalog(
+        N,
+        catalog_path=cfg.catalog.path,
+        instrument_specs_path=cfg.catalog.instrument_specs_path,
+        instrument_ids=list(cfg.universe.instrument_ids),
+    )
+
+    overall = cfg.time.range()
+
+    # Manifest ref: record Phase2 manifest path and a small subset (if readable)
+    manifest_ref = {
+        "catalog_path": str(Path(cfg.catalog.path).expanduser().resolve()),
+        "manifest_path": (str(Path(cfg.catalog.manifest_path).expanduser().resolve()) if cfg.catalog.manifest_path else None),
+    }
+    if cfg.catalog.manifest_path:
+        try:
+            mp = Path(cfg.catalog.manifest_path).expanduser().resolve()
+            manifest_ref["manifest_json"] = json.loads(mp.read_text(encoding="utf-8"))
+        except Exception:
+            manifest_ref["manifest_json"] = None
+
+    results: list[RunResult] = []
+
+    if cfg.mode.kind == "single":
+        run_start = overall.start
+        run_end = overall.end
+        res = _run_one(
+            N,
+            cfg=cfg,
+            out_dir=out_root / "windows" / "single",
+            manifest_ref=manifest_ref,
+            run_range=TimeRange(run_start, run_end),
+            data_range=_data_range_with_warmup(cfg, run_start, run_end),
+            window_id="single",
+            fold_meta=None,
+        )
+        results.append(res)
+    else:
+        wf = cfg.mode.walk_forward
+        train = parse_duration(wf.train)
+        test = parse_duration(wf.test)
+        step = parse_duration(wf.step)
+        purge = parse_duration(wf.purge)
+        embargo = parse_duration(wf.embargo)
+
+        folds = list(
+            iter_walk_forward_folds(
+                overall=overall,
+                train=train,
+                test=test,
+                step=step,
+                purge=purge,
+                embargo=embargo,
+                max_folds=wf.max_folds,
+            ),
+        )
+        for fold in folds:
+            window_id = fold.to_id_str()
+            out_dir = out_root / "windows" / window_id
+
+            # Run range is test window; data range includes warmup offset from test_start.
+            run_range = fold.test_range
+            data_range = _data_range_with_warmup(cfg, fold.test_range.start, fold.test_range.end)
+
+            res = _run_one(
+                N,
+                cfg=cfg,
+                out_dir=out_dir,
+                manifest_ref=manifest_ref,
+                run_range=run_range,
+                data_range=data_range,
+                window_id=window_id,
+                fold_meta=fold_summary_dict(fold),
+            )
+            results.append(res)
+
+        suite_summary = {
+            "schema_version": "1",
+            "suite_id": suite_id,
+            "counts": {
+                "windows": len(results),
+            },
+            "windows": [r.summary for r in results],
+        }
+        write_suite_index(out_root, suite_summary=suite_summary)
+
+    return results
+
+
+def _data_range_with_warmup(cfg: Phase4SuiteConfig, run_start: Any, run_end: Any) -> TimeRange:
+    # Apply warmup to data-start only (does not change simulation start).
+    warmup = parse_duration(cfg.time.warmup)
+    data_start = run_start - warmup
+    return TimeRange(data_start, run_end)
+
+
+def _run_one(
+    N: Any,
+    *,
+    cfg: Phase4SuiteConfig,
+    out_dir: Path,
+    manifest_ref: dict[str, Any],
+    run_range: TimeRange,
+    data_range: TimeRange,
+    window_id: str,
+    fold_meta: dict[str, Any] | None,
+) -> RunResult:
+    ensure_dir(out_dir)
+
+    run_start_iso = format_utc_datetime(run_range.start)
+    run_end_iso = format_utc_datetime(run_range.end)
+    data_start_iso = format_utc_datetime(data_range.start)
+    data_end_iso = format_utc_datetime(data_range.end)
+
+    # Strategy integration
+    strategies = build_importable_strategies(
+        N,
+        strategy_name=cfg.strategy.name,
+        strategy_config=cfg.strategy.config,
+        instrument_ids=list(cfg.universe.instrument_ids),
+    )
+
+    # Venue config
+    venue_cfg = N.BacktestVenueConfig(
+        name=str(cfg.universe.venue),
+        oms_type=str(cfg.universe.oms_type),
+        account_type=str(cfg.universe.account_type),
+        base_currency=str(cfg.universe.base_currency),
+        starting_balances=list(cfg.universe.starting_balances),
+    )
+
+    # Engine config
+    engine_cfg = N.BacktestEngineConfig(
+        strategies=strategies,
+        logging=N.LoggingConfig(
+            log_level="ERROR",
+            log_colors=False,
+            use_pyo3=False,
+        ),
+    )
+
+    # Data configs
+    plan = DataLoadPlan(
+        catalog_path=str(Path(cfg.catalog.path).expanduser().resolve()),
+        instrument_ids=list(cfg.universe.instrument_ids),
+        include=list(cfg.data.include),
+        data_range=data_range,
+        run_range=run_range,
+    )
+    data_cfgs = build_backtest_data_configs(N, plan)
+
+    # Run config
+    run_cfg_kwargs = dict(
+        engine=engine_cfg,
+        venues=[venue_cfg],
+        data=data_cfgs,
+        start=run_start_iso,
+        end=run_end_iso,
+    )
+    # Optional keys seen in provided Nautilus examples
+    try:
+        run_cfg_kwargs["raise_exception"] = True
+    except Exception:
+        pass
+
+    run_cfg = N.BacktestRunConfig(**run_cfg_kwargs)
+
+    # Orchestrate backtest
+    node = N.BacktestNode(configs=[run_cfg])
+    try:
+        _ = node.run()
+        engine = node.get_engine(run_cfg.id)
+
+        reports = extract_reports(N, engine, venue_name=str(cfg.universe.venue))
+        counts = compute_counts(reports)
+        perf = compute_performance(engine, reports)
+
+        summary = {
+            "schema_version": "1",
+            "experiment_id": cfg.output.suite_name or cfg.resolved_suite_id(),
+            "run_config_id": getattr(run_cfg, "id", None),
+            "window_id": window_id,
+            "strategy": {
+                "name": cfg.strategy.name,
+                "variant": None,
+                "config_hash": _hash_strategy_config(cfg.strategy),
+            },
+            "universe": {
+                "venue": str(cfg.universe.venue),
+                "instrument_ids": list(cfg.universe.instrument_ids),
+                "start_utc": run_start_iso,
+                "end_utc": run_end_iso,
+                "data_start_utc": data_start_iso,
+                "data_end_utc": data_end_iso,
+            },
+            "fold": fold_meta,
+            "counts": {
+                "orders": counts.orders,
+                "fills": counts.fills,
+                "positions": counts.positions,
+            },
+            "performance": {
+                "starting_equity": perf.starting_equity,
+                "ending_equity": perf.ending_equity,
+                "total_pnl": perf.total_pnl,
+                "total_return": perf.total_return,
+                "max_drawdown": perf.max_drawdown,
+                "sharpe": perf.sharpe,
+                "deflated_sharpe": perf.deflated_sharpe,
+            },
+            "artifacts": {
+                "orders_csv": "orders.csv",
+                "fills_csv": "fills.csv",
+                "positions_csv": "positions.csv",
+                "account_report_csv": "account_report.csv",
+            },
+        }
+
+        resolved_cfg = {
+            "schema_version": "1",
+            "window_id": window_id,
+            "suite_config": to_primitive_dict(cfg),
+            "run_range": {"start_utc": run_start_iso, "end_utc": run_end_iso},
+            "data_range": {"start_utc": data_start_iso, "end_utc": data_end_iso},
+            "data_plan": plan.to_debug_dict(),
+        }
+
+        from phoenix_phase4.artifacts import write_run_bundle
+
+        write_run_bundle(
+            out_dir=out_dir,
+            resolved_config=resolved_cfg,
+            manifest_ref=manifest_ref,
+            reports={
+                "orders": reports.orders,
+                "fills": reports.fills,
+                "positions": reports.positions,
+                "account": reports.account,
+            },
+            summary=summary,
+        )
+
+        return RunResult(run_dir=str(out_dir), summary=summary)
+    finally:
+        try:
+            node.dispose()
+        except Exception:
+            pass
+
+
+def _hash_strategy_config(strategy: Any) -> str:
+    obj = {
+        "name": getattr(strategy, "name", None),
+        "config": getattr(strategy, "config", None),
+    }
+    payload = json.dumps(obj, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()[:16]
+=== END FILE ===
+
+=== FILE: src/phoenix_phase4/cli.py ===
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from phoenix_phase4.config import load_suite_config
+from phoenix_phase4.runner import run_phase4
+
+
+def main(argv: list[str] | None = None) -> None:
+    ap = argparse.ArgumentParser(prog="phoenix-phase4")
+    ap.add_argument("--config", required=True, help="Path to Phase 4 suite YAML config")
+    ns = ap.parse_args(argv)
+
+    cfg = load_suite_config(ns.config)
+    _ = run_phase4(cfg)
+=== END FILE ===
+
+=== FILE: tests/conftest.py ===
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture()
+def tmp_root(tmp_path: Path) -> Path:
+    return tmp_path
+=== END FILE ===
+
+=== FILE: tests/test_walkforward.py ===
+from __future__ import annotations
+
+from datetime import timedelta
+
+from phoenix_phase4.time_utils import TimeRange, parse_utc_datetime
+from phoenix_phase4.walkforward import iter_walk_forward_folds
+
+
+def test_walk_forward_fold_generation_is_deterministic():
+    overall = TimeRange(
+        start=parse_utc_datetime("2023-05-16T00:00:00Z"),
+        end=parse_utc_datetime("2023-05-20T00:00:00Z"),
+    )
+    folds1 = list(
+        iter_walk_forward_folds(
+            overall=overall,
+            train=timedelta(days=2),
+            test=timedelta(days=1),
+            step=timedelta(days=1),
+            purge=timedelta(hours=0),
+            embargo=timedelta(hours=0),
+            max_folds=None,
+        ),
+    )
+    folds2 = list(
+        iter_walk_forward_folds(
+            overall=overall,
+            train=timedelta(days=2),
+            test=timedelta(days=1),
+            step=timedelta(days=1),
+            purge=timedelta(hours=0),
+            embargo=timedelta(hours=0),
+            max_folds=None,
+        ),
+    )
+    assert [f.to_id_str() for f in folds1] == [f.to_id_str() for f in folds2]
+=== END FILE ===
+
+=== FILE: tests/test_phase4_smoke.py ===
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+import yaml
+
+from phoenix_phase4.config import load_suite_config
+from phoenix_phase4.runner import run_phase4
+
+
+def _write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+@pytest.mark.skipif(
+    pytest.importorskip("nautilus_trader", reason="nautilus_trader not installed") is None,  # pragma: no cover
+    reason="nautilus_trader not installed",
+)
+def test_phase4_single_run_smoke_no_trades_is_deterministic(tmp_root: Path):
+    # Build minimal Phase 2 catalog using Phase 2 ETL (allowed in tests).
+    phoenix_etl = pytest.importorskip("phoenix_etl")
+    from phoenix_etl.config import EtlConfig  # type: ignore
+    from phoenix_etl.etl import run_etl  # type: ignore
+
+    raw_root = tmp_root / "raw_root"
+    catalog_root = tmp_root / "catalog_root" / "phoenix_um_btcusdt"
+    manifest_path = tmp_root / "phase2_manifest.json"
+    validation_path = tmp_root / "validation_report.md"
+
+    # Minimal futures layout under raw_root/data/raw/futures/...
+    base = raw_root / "data" / "raw" / "futures"
+
+    _write_text(
+        base / "daily" / "aggTrades" / "BTCUSDT-aggTrades-2023-05-16.csv",
+        "agg_trade_id,price,quantity,first_trade_id,last_trade_id,transact_time,is_buyer_maker\n"
+        "1,27000.10,0.001,1,1,1684195200000,true\n"
+        "2,27000.20,0.002,2,2,1684195200001,false\n",
+    )
+    _write_text(
+        base / "daily" / "bookTicker" / "BTCUSDT-bookTicker-2023-05-16.csv",
+        "update_id,best_bid_price,best_bid_qty,best_ask_price,best_ask_qty,transaction_time,event_time\n"
+        "10,27000.10,1.0,27000.20,1.5,1684195200000,1684195200000\n",
+    )
+    _write_text(
+        base / "daily" / "klines_1m" / "BTCUSDT-1m-2023-05-16.csv",
+        "1684195200000,27000.10,27000.20,26999.90,27000.15,12.345,1684195259999,0,0,0,0,0\n",
+    )
+    _write_text(
+        base / "daily" / "metrics" / "BTCUSDT-metrics-2023-05-16.csv",
+        "create_time,symbol,sum_open_interest,sum_open_interest_value\n"
+        "2023-05-16 00:05:00,BTCUSDT,100.0,2700000.0\n",
+    )
+    _write_text(
+        base / "daily" / "bookDepth" / "BTCUSDT-bookDepth-2023-05-16.csv",
+        "timestamp,percentage,depth,notional\n"
+        "2023-05-16 00:00:09,-5,7950.49500000,543853183.11875000\n",
+    )
+    _write_text(
+        base / "monthly" / "fundingRate" / "BTCUSDT-fundingRate-2023-05.csv",
+        "calc_time,funding_interval_hours,last_funding_rate\n"
+        "1684195200000,8,0.00010000\n",
+    )
+
+    etl_cfg = EtlConfig(
+        raw_roots=[str(raw_root)],
+        catalog_path=str(catalog_root),
+        manifest_path=str(manifest_path),
+        validation_report_path=str(validation_path),
+        universe="futures",
+        venue="BINANCE",
+        symbols=["BTCUSDT"],
+        datasets=["aggTrades", "bookTicker", "klines_1m", "metrics", "bookDepth", "fundingRate"],
+        start_date_key="2023-05-16",
+        end_date_key="2023-05-16",
+        batch_size=10,
+        strict=True,
+        sort_within_batch=True,
+    )
+    out = run_etl(etl_cfg)
+    assert out.catalog_path.exists()
+
+    # Instrument specs required by Phase 4 preflight
+    instrument_specs_path = tmp_root / "instrument_specs.yaml"
+    instrument_specs = {
+        "instruments": [
+            {
+                "instrument_id": "BTCUSDT.BINANCE",
+                "raw_symbol": "BTCUSDT",
+                "base_currency": "BTC",
+                "quote_currency": "USDT",
+                "settlement_currency": "USDT",
+                "is_inverse": False,
+                "price_precision": 2,
+                "size_precision": 3,
+                "price_increment": "0.10",
+                "size_increment": "0.001",
+                "maker_fee": "0.0002",
+                "taker_fee": "0.0004",
+            },
+        ],
+    }
+    instrument_specs_path.write_text(yaml.safe_dump(instrument_specs, sort_keys=True), encoding="utf-8")
+
+    # Phase 4 config (single run)
+    phase4_config_path = tmp_root / "phase4.yaml"
+    phase4_cfg = {
+        "schema_version": "1",
+        "catalog": {
+            "path": str(out.catalog_path),
+            "manifest_path": str(out.manifest_path),
+            "instrument_specs_path": str(instrument_specs_path),
+        },
+        "output": {
+            "dir": str(tmp_root / "runs_a"),
+            "suite_name": "smoke_suite",
+            "overwrite": True,
+        },
+        "universe": {
+            "venue": "BINANCE",
+            "instrument_ids": ["BTCUSDT.BINANCE"],
+            "oms_type": "NETTING",
+            "account_type": "MARGIN",
+            "base_currency": "USDT",
+            "starting_balances": ["10000 USDT"],
+        },
+        "data": {
+            "include": ["Bar"],  # EMA baseline uses bars; keep minimal for determinism
+        },
+        "time": {
+            "start_utc": "2023-05-16T00:00:00Z",
+            "end_utc": "2023-05-16T00:01:00Z",  # 1 minute window, end-exclusive
+            "warmup": "0s",
+        },
+        "mode": {"kind": "single"},
+        "strategy": {
+            "name": "ema_cross_baseline",
+            # Periods large enough that no trade occurs (keeps determinism robust even if IDs vary).
+            "config": {
+                "trade_size": "0.001",
+                "fast_ema_period": 10,
+                "slow_ema_period": 20,
+                "request_historical_bars": False,
+            },
+        },
+        "determinism_seed": 0,
+    }
+    phase4_config_path.write_text(yaml.safe_dump(phase4_cfg, sort_keys=True), encoding="utf-8")
+
+    # Run twice to two output dirs, compare summaries
+    cfg = load_suite_config(str(phase4_config_path))
+    res1 = run_phase4(cfg)
+    summary1_path = Path(phase4_cfg["output"]["dir"]) / phase4_cfg["output"]["suite_name"] / "windows" / "single" / "summary.json"
+    assert summary1_path.exists()
+    s1 = json.loads(summary1_path.read_text(encoding="utf-8"))
+
+    # Second run to different dir
+    phase4_cfg["output"]["dir"] = str(tmp_root / "runs_b")
+    phase4_config_path.write_text(yaml.safe_dump(phase4_cfg, sort_keys=True), encoding="utf-8")
+    cfg2 = load_suite_config(str(phase4_config_path))
+    res2 = run_phase4(cfg2)
+    summary2_path = Path(phase4_cfg["output"]["dir"]) / phase4_cfg["output"]["suite_name"] / "windows" / "single" / "summary.json"
+    assert summary2_path.exists()
+    s2 = json.loads(summary2_path.read_text(encoding="utf-8"))
+
+    # Deterministic invariant for this no-trade run: summary contents match except for paths.
+    # Compare stable fields only.
+    assert s1["counts"] == s2["counts"]
+    assert s1["performance"] == s2["performance"]
+    assert s1["universe"]["start_utc"] == s2["universe"]["start_utc"]
+    assert s1["universe"]["end_utc"] == s2["universe"]["end_utc"]
+=== END FILE ===
