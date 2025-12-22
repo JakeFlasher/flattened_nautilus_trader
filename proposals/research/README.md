@@ -142,7 +142,7 @@ If it doesn’t line up with spreads/slippage/depth, then it’s mostly a volati
 ## 6) What I need from you to be precise
 
 When you say “liquidity pressure index,” do you mean something closer to:
-
+ 
 1) **Amihud-style illiquidity** (price move per dollar volume),  
 2) **order-book pressure** (imbalance/depth/spread), or  
 3) a **custom risk index** used for monitoring?
