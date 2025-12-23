@@ -13,8 +13,8 @@ We will operate a **single-instrument** portfolio (BTCUSDT perpetual futures) bu
 
 **Inputs available at decision time \(t\):**
 - \(Z_t \in [-3,3]\): normalized alpha signal (unitless, signed).
-- \(\sigma_t\): volatility estimate (real-time, strictly positive; derived from \( \sigma^2_{\mathrm{YZ},t} \)).
-- `QuoteTick`: top-of-book \( (b_t, a_t, q^b_t, q^a_t) \) from `bookTicker`.
+- \(\sigma_t\): volatility estimate (real-time, strictly positive; derived from $\sigma^2_{\mathrm{YZ},t}$).
+- `QuoteTick`: top-of-book $(b_t, a_t, q^b_t, q^a_t)$ from `bookTicker`.
 - Portfolio: equity \(E_t\), net position \(Q_{\text{actual}}(t)\).
 
 **Outputs of this chapter:**
@@ -25,7 +25,7 @@ We will operate a **single-instrument** portfolio (BTCUSDT perpetual futures) bu
 
 ## 3.1 Dynamic Position Sizing (Allocation Function)
 
-### 3.1.1 Map normalized signal \(Z_t\) to an expected return \( \mathbb{E}[r_t] \)
+### 3.1.1 Map normalized signal \(Z_t\) to an expected return $\mathbb{E}[r_t]$
 
 Your \(Z_t\) is bounded but still needs a **unit conversion** into “expected return per decision interval.” We enforce a **saturating** mapping to prevent tail-risk blowups when \(Z_t\) sticks at ±3.
 
