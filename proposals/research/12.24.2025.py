@@ -629,11 +629,13 @@ def load_etl_config(path: Path) -> EtlConfig:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("config must be a YAML mapping")
+
     universe = str(data.get("universe", "futures"))
     datasets = data.get("datasets")
     if datasets is None:
         datasets = EtlConfig.default_datasets_for_universe(universe)
-    return EtlConfig(
+
+    cfg = EtlConfig(
         raw_roots=list(data["raw_roots"]),
         catalog_path=str(data["catalog_path"]),
         manifest_path=str(data["manifest_path"]),
@@ -648,6 +650,20 @@ def load_etl_config(path: Path) -> EtlConfig:
         strict=bool(data.get("strict", False)),
         sort_within_batch=bool(data.get("sort_within_batch", True)),
     )
+
+    # Optional knobs (kept out-of-band to preserve EtlConfig public fields).
+    # Used by run_etl for deterministic parallel ingest + precision enforcement.
+    spec_path = data.get("instrument_specs_path") or data.get("instrument_specs")
+    if spec_path:
+        object.__setattr__(cfg, "instrument_specs_path", str(spec_path))
+    workers = data.get("ingest_workers") or data.get("workers")
+    if workers is not None:
+        object.__setattr__(cfg, "ingest_workers", int(workers))
+    qmax = data.get("ingest_queue_max_batches") or data.get("queue_max_batches")
+    if qmax is not None:
+        object.__setattr__(cfg, "ingest_queue_max_batches", int(qmax))
+
+    return cfg
 
 
 @dataclass(frozen=True)
@@ -1757,6 +1773,108 @@ def instrument_id_for(symbol: str, venue: str) -> object:
 
 
 def run_etl(cfg: EtlConfig) -> EtlOutputs:
+    """
+    Deterministic, bounded-memory parallel ETL.
+
+    Requirements implemented:
+      - Single-writer Parquet writes (bounded queue + ack backpressure).  # CORE MISSION (2)(1)
+      - Optional instrument_specs-based Bar precision enforcement.        # CORE MISSION (2)(2)
+      - Robust parsing for comma CSV and whitespace-delimited dumps.      # chap4 §4.1.4
+    """
+    import queue
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from decimal import ROUND_HALF_UP
+
+    # Patch csv.reader once so csv.reader + csv.DictReader can handle whitespace-delimited "vision" dumps.
+    # chap4 §4.1.4: tolerant parsing (comma or whitespace).
+    if not getattr(csv, "_phoenix_any_reader", False):
+        _orig_reader = csv.reader
+
+        def _reader_any(csvfile, *args, **kwargs):
+            # If caller explicitly requested a delimiter that isn't comma, honor it.
+            if "delimiter" in kwargs and kwargs.get("delimiter") not in (",", None):
+                return _orig_reader(csvfile, *args, **kwargs)
+
+            try:
+                pos = csvfile.tell()
+            except Exception:
+                pos = None
+
+            sample = ""
+            try:
+                while True:
+                    ln = csvfile.readline()
+                    if not ln:
+                        break
+                    if ln.strip():
+                        sample = ln
+                        break
+            finally:
+                if pos is not None:
+                    try:
+                        csvfile.seek(pos)
+                    except Exception:
+                        pass
+
+            if sample and ("," in sample):
+                return _orig_reader(csvfile, *args, **kwargs)
+
+            # Whitespace: normalize to comma-separated lines and parse with the original reader.
+            def _gen():
+                if pos is None and sample:
+                    yield ",".join(sample.strip().split())
+                for ln in csvfile:
+                    ln = ln.strip()
+                    if not ln:
+                        continue
+                    yield ",".join(ln.split())
+
+            return _orig_reader(_gen(), delimiter=",")
+
+        csv.reader = _reader_any
+        csv._phoenix_any_reader = True
+
+    # Optional instrument specs for precision enforcement (Bars).
+    specs = None
+    spec_path = getattr(cfg, "instrument_specs_path", None)
+    if spec_path:
+        try:
+            specs = load_instrument_specs(str(spec_path))
+        except Exception:
+            if cfg.strict:
+                raise
+            specs = None
+    elif cfg.strict:
+        # Strict mode: require specs if you want deterministic precision enforcement.
+        # (If you prefer inference fallback, we can add it in PART 2.)
+        raise ValueError("strict=true requires instrument_specs_path for precision enforcement")
+
+    def _quantize(x: Decimal, prec: int) -> Decimal:
+        q = Decimal("1") if int(prec) <= 0 else Decimal("1").scaleb(-int(prec))
+        return x.quantize(q, rounding=ROUND_HALF_UP)
+
+    def _coerce_bar_precision(bar: Any, spec: Any) -> Any:
+        N = load_nautilus_imports()
+        Price = N.Price
+        Quantity = N.Quantity
+        Bar = N.Bar
+        o = _quantize(price_to_decimal(getattr(bar, "open")), int(spec.price_precision))
+        h = _quantize(price_to_decimal(getattr(bar, "high")), int(spec.price_precision))
+        l = _quantize(price_to_decimal(getattr(bar, "low")), int(spec.price_precision))
+        c = _quantize(price_to_decimal(getattr(bar, "close")), int(spec.price_precision))
+        v = _quantize(qty_to_decimal(getattr(bar, "volume")), int(spec.size_precision))
+        return Bar(
+            bar_type=getattr(bar, "bar_type"),
+            open=Price.from_str(str(o)),
+            high=Price.from_str(str(h)),
+            low=Price.from_str(str(l)),
+            close=Price.from_str(str(c)),
+            volume=Quantity.from_str(str(v)),
+            ts_event=int(getattr(bar, "ts_event")),
+            ts_init=int(getattr(bar, "ts_init")),
+        )
+
     N = load_nautilus_imports()
     roots = default_roots_from_args(cfg.raw_roots)
     inv = build_inventory(roots)
@@ -1771,6 +1889,7 @@ def run_etl(cfg: EtlConfig) -> EtlOutputs:
         start_date_key=cfg.start_date_key,
         end_date_key=cfg.end_date_key,
     )
+    rows.sort(key=lambda r: (r.period, r.dataset, r.symbol, r.date_key, r.path))
 
     catalog_path = Path(cfg.catalog_path).expanduser().resolve()
     catalog_path.mkdir(parents=True, exist_ok=True)
@@ -1788,43 +1907,178 @@ def run_etl(cfg: EtlConfig) -> EtlOutputs:
     )
 
     registry = ParserRegistry(universe=cfg.universe)
-    rows.sort(key=lambda r: (r.period, r.dataset, r.symbol, r.date_key, r.path))
 
+    # Pre-build per-file stats to keep writer loop simple/deterministic.
+    fstats_by_idx: list[FileIngestStats] = []
+    inst_id_by_idx: list[Any] = []
+    inst_id_str_by_idx: list[str] = []
+    spec_by_idx: list[Any] = []
     for r in rows:
-        parser = registry.get(r.dataset)
         inst_id = instrument_id_for(r.symbol, cfg.venue)
-
-        fstats = build_file_stats_base(
-            path=r.path,
-            universe=r.universe,
-            period=r.period,
-            dataset=r.dataset,
-            symbol=r.symbol,
-            date_key=r.date_key,
-            size_bytes=r.size_bytes,
-            mtime_ns=r.mtime_ns,
+        inst_id_str = f"{r.symbol}.{cfg.venue}"
+        spec = specs.get(inst_id_str) if specs else None
+        fstats_by_idx.append(
+            build_file_stats_base(
+                path=r.path,
+                universe=r.universe,
+                period=r.period,
+                dataset=r.dataset,
+                symbol=r.symbol,
+                date_key=r.date_key,
+                size_bytes=r.size_bytes,
+                mtime_ns=r.mtime_ns,
+            ),
         )
+        inst_id_by_idx.append(inst_id)
+        inst_id_str_by_idx.append(inst_id_str)
+        spec_by_idx.append(spec)
 
-        for result in parser.parse_file(
-            Path(r.path),
-            inst_id,
-            strict=cfg.strict,
-            sort_within_batch=cfg.sort_within_batch,
-            batch_size=cfg.batch_size,
-        ):
-            if result.events:
-                catalog.write_data(result.events, skip_disjoint_check=True)
+    # Bounded queue + ack => bounded memory and deterministic single-writer.
+    stop_event = threading.Event()
+    q: "queue.Queue[Any]" = queue.Queue(
+        maxsize=max(1, int(getattr(cfg, "ingest_queue_max_batches", 8))),
+    )
 
-            fstats.rows_read = max(fstats.rows_read, result.rows_read)
-            fstats.events_written += result.events_emitted
-            fstats.parse_errors = result.parse_errors
-            fstats.dedup_dropped = result.dedup_dropped
-            if result.ts_min is not None:
-                fstats.ts_min = result.ts_min if fstats.ts_min is None else min(fstats.ts_min, result.ts_min)
-            if result.ts_max is not None:
-                fstats.ts_max = result.ts_max if fstats.ts_max is None else max(fstats.ts_max, result.ts_max)
+    @dataclass(frozen=True)
+    class _Msg:
+        kind: str  # "batch" | "done" | "error"
+        file_idx: int
+        batch_idx: int = 0
+        events: list[Any] | None = None
+        ack: threading.Event | None = None
+        rows_read: int = 0
+        parse_errors: int = 0
+        dedup_dropped: int = 0
+        ts_min: int | None = None
+        ts_max: int | None = None
+        exc: Exception | None = None
 
-        manifest.by_file.append(fstats)
+    def _worker(file_idx: int) -> None:
+        r = rows[file_idx]
+        parser = registry.get(r.dataset)
+        inst_id = inst_id_by_idx[file_idx]
+        batches = 0
+        last_rows_read = 0
+        last_parse_errors = 0
+        last_dedup = 0
+        last_ts_min = None
+        last_ts_max = None
+        try:
+            for result in parser.parse_file(
+                Path(r.path),
+                inst_id,
+                strict=cfg.strict,
+                sort_within_batch=cfg.sort_within_batch,
+                batch_size=cfg.batch_size,
+            ):
+                last_rows_read = max(last_rows_read, int(result.rows_read))
+                last_parse_errors = int(result.parse_errors)
+                last_dedup = int(result.dedup_dropped)
+                if result.ts_min is not None:
+                    last_ts_min = result.ts_min if last_ts_min is None else min(last_ts_min, result.ts_min)
+                if result.ts_max is not None:
+                    last_ts_max = result.ts_max if last_ts_max is None else max(last_ts_max, result.ts_max)
+
+                if not result.events:
+                    continue
+
+                ack = threading.Event()
+                q.put(_Msg(kind="batch", file_idx=file_idx, batch_idx=batches, events=result.events, ack=ack))
+                while not ack.wait(timeout=0.25):
+                    if stop_event.is_set():
+                        return
+                batches += 1
+
+            q.put(
+                _Msg(
+                    kind="done",
+                    file_idx=file_idx,
+                    batch_idx=batches,
+                    rows_read=last_rows_read,
+                    parse_errors=last_parse_errors,
+                    dedup_dropped=last_dedup,
+                    ts_min=last_ts_min,
+                    ts_max=last_ts_max,
+                ),
+            )
+        except Exception as e:
+            stop_event.set()
+            q.put(_Msg(kind="error", file_idx=file_idx, exc=e))
+
+    # Writer loop: enforce deterministic (file_idx,batch_idx) write order.
+    batch_buf: dict[tuple[int, int], _Msg] = {}
+    done_buf: dict[int, _Msg] = {}
+
+    def _write_batch(file_idx: int, msg: _Msg) -> None:
+        events = msg.events or []
+        spec = spec_by_idx[file_idx]
+        if spec is not None:
+            # CORE MISSION (2)(2): enforce Bar precision to match instrument contract.
+            # chap2 §2.1.2: Bars are timestamped on close; we keep ts_event/ts_init unchanged.
+            BarCls = N.Bar
+            if events and isinstance(events[0], BarCls):
+                events = [_coerce_bar_precision(b, spec) for b in events]
+        catalog.write_data(events, skip_disjoint_check=True)
+
+    max_workers = int(getattr(cfg, "ingest_workers", 0) or 0)
+    if max_workers <= 0:
+        max_workers = min(4, max(1, (os.cpu_count() or 2)))
+
+    futures = []
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        for i in range(len(rows)):
+            futures.append(ex.submit(_worker, i))
+
+        expected_file = 0
+        expected_batch = 0
+        try:
+            while expected_file < len(rows):
+                key = (expected_file, expected_batch)
+                msg = batch_buf.get(key)
+                if msg is not None:
+                    _write_batch(expected_file, msg)
+                    fstats_by_idx[expected_file].events_written += len(msg.events or [])
+                    if msg.ack is not None:
+                        msg.ack.set()
+                    del batch_buf[key]
+                    expected_batch += 1
+                    continue
+
+                done = done_buf.get(expected_file)
+                if done is not None and expected_batch >= int(done.batch_idx):
+                    fstats = fstats_by_idx[expected_file]
+                    fstats.rows_read = max(fstats.rows_read, int(done.rows_read))
+                    fstats.parse_errors = int(done.parse_errors)
+                    fstats.dedup_dropped = int(done.dedup_dropped)
+                    if done.ts_min is not None:
+                        fstats.ts_min = done.ts_min if fstats.ts_min is None else min(fstats.ts_min, done.ts_min)
+                    if done.ts_max is not None:
+                        fstats.ts_max = done.ts_max if fstats.ts_max is None else max(fstats.ts_max, done.ts_max)
+                    manifest.by_file.append(fstats)
+                    expected_file += 1
+                    expected_batch = 0
+                    continue
+
+                try:
+                    incoming = q.get(timeout=0.25)
+                except queue.Empty:
+                    continue
+
+                if incoming.kind == "error":
+                    stop_event.set()
+                    raise incoming.exc  # type: ignore[misc]
+                if incoming.kind == "done":
+                    done_buf[incoming.file_idx] = incoming
+                elif incoming.kind == "batch":
+                    batch_buf[(incoming.file_idx, incoming.batch_idx)] = incoming
+        finally:
+            stop_event.set()
+            for f in futures:
+                try:
+                    _ = f.result()
+                except Exception:
+                    if cfg.strict:
+                        raise
 
     manifest_path = Path(cfg.manifest_path).expanduser().resolve()
     manifest.write(manifest_path)
@@ -2807,14 +3061,28 @@ class PhoenixLpiStrategy(Strategy):
             self._enter_mean_reversion(side=side, snap=snap)
 
     def _enter_momentum(self, *, side: OrderSide, snap: LpiSnapshot) -> None:
+        """
+        Momentum entry.
+
+        review.md / CORE MISSION (2)(3):
+          - Avoid IOC cancel-before-fill edge cases under some backtest timing/fill models.
+          - Use GTC and rely on existing TTL + gate-based cancellation to bound exposure.
+        """
         assert self.instrument is not None
+
+        # Prevent stacking: we only want one active entry attempt at a time.
+        # (Safe here because we only call this when flat and _pending_entry is None.)
+        self.cancel_all_orders(self.config.instrument_id)
+
         qty = self.instrument.make_qty(self.config.trade_size)
-        if self.config.momentum_use_market:
+
+        if bool(self.config.momentum_use_market):
+            # Market orders should be taker; use GTC to avoid IOC cancel-before-fill in some engines.
             order: MarketOrder = self.order_factory.market(
                 instrument_id=self.config.instrument_id,
                 order_side=side,
                 quantity=qty,
-                time_in_force=TimeInForce.IOC,
+                time_in_force=TimeInForce.GTC,
             )
             self.submit_order(order)
             self._pending_entry = _PendingEntry(
@@ -2823,32 +3091,37 @@ class PhoenixLpiStrategy(Strategy):
                 side=side,
                 variant="momentum",
             )
+            return
+
+        # Otherwise use a marketable limit (crossing) to guarantee fill when quotes exist.
+        last_q = self.cache.quote_tick(self.config.instrument_id)
+        if last_q is None:
+            return
+
+        bid = price_to_decimal(last_q.bid_price)
+        ask = price_to_decimal(last_q.ask_price)
+        tick = self.instrument.price_increment
+
+        if side == OrderSide.BUY:
+            px = self.instrument.make_price(ask + tick)
         else:
-            last_q = self.cache.quote_tick(self.config.instrument_id)
-            if last_q is None:
-                return
-            bid = price_to_decimal(last_q.bid_price)
-            ask = price_to_decimal(last_q.ask_price)
-            tick = self.instrument.price_increment
-            if side == OrderSide.BUY:
-                px = self.instrument.make_price(ask + tick)
-            else:
-                px = self.instrument.make_price(bid - tick)
-            order = self.order_factory.limit(
-                instrument_id=self.config.instrument_id,
-                order_side=side,
-                quantity=qty,
-                price=px,
-                post_only=False,
-                time_in_force=TimeInForce.IOC,
-            )
-            self.submit_order(order)
-            self._pending_entry = _PendingEntry(
-                client_order_id=order.client_order_id,
-                ts_submit=int(snap.bucket_end_ns),
-                side=side,
-                variant="momentum",
-            )
+            px = self.instrument.make_price(bid - tick)
+
+        order2 = self.order_factory.limit(
+            instrument_id=self.config.instrument_id,
+            order_side=side,
+            quantity=qty,
+            price=px,
+            post_only=False,
+            time_in_force=TimeInForce.GTC,
+        )
+        self.submit_order(order2)
+        self._pending_entry = _PendingEntry(
+            client_order_id=order2.client_order_id,
+            ts_submit=int(snap.bucket_end_ns),
+            side=side,
+            variant="momentum",
+        )
 
     def _enter_mean_reversion(self, *, side: OrderSide, snap: LpiSnapshot) -> None:
         assert self.instrument is not None
@@ -3238,8 +3511,15 @@ class AlphaZScoreStrategy(Strategy):
                 return Decimal("0")
 
     def _submit_ioc_cross(self, dQ: Decimal) -> None:
+        # CORE MISSION (2)(3): orders should fill when market data exists.
+        # We avoid IOC here because some backtest/execution modes only fill on the next tick,
+        # causing IOC orders submitted "between ticks" to cancel before any fill can occur.
         if self.instrument is None:
             return
+
+        # Prevent stacking open orders if we rebalance every bar.
+        self.cancel_all_orders(self.config.instrument_id)
+
         side = OrderSide.BUY if dQ > 0 else OrderSide.SELL
         qty_abs = dQ.copy_abs()
         try:
@@ -3250,10 +3530,7 @@ class AlphaZScoreStrategy(Strategy):
         slip = max(0, int(getattr(self.config, "slippage_ticks", 0)))
         if self._last_bid is not None and self._last_ask is not None:
             tick = price_to_decimal(getattr(self.instrument, "price_increment", Decimal("0")))
-            if side == OrderSide.BUY:
-                px = self._last_ask + (tick * slip)
-            else:
-                px = self._last_bid - (tick * slip)
+            px = (self._last_ask + (tick * slip)) if side == OrderSide.BUY else (self._last_bid - (tick * slip))
             try:
                 price = self.instrument.make_price(px)
                 order: LimitOrder = self.order_factory.limit(
@@ -3262,7 +3539,7 @@ class AlphaZScoreStrategy(Strategy):
                     quantity=qty,
                     price=price,
                     post_only=False,
-                    time_in_force=TimeInForce.IOC,
+                    time_in_force=TimeInForce.GTC,
                 )
                 self.submit_order(order)
                 return
@@ -3273,7 +3550,7 @@ class AlphaZScoreStrategy(Strategy):
             instrument_id=self.config.instrument_id,
             order_side=side,
             quantity=qty,
-            time_in_force=TimeInForce.IOC,
+            time_in_force=TimeInForce.GTC,
         )
         self.submit_order(order2)
 
@@ -4593,6 +4870,50 @@ def _run_one(
         counts = compute_counts(reports)
         perf = compute_performance(engine, reports)
 
+        # review.md: backtest should be cost-aware; estimate fees from fills only (no fills => no fees).
+        # We do NOT mutate engine accounting here; we only report a conservative estimate.
+        estimated_fees_taker: float | None = None
+        try:
+            spec_path = cfg.catalog.instrument_specs_path
+            if spec_path and len(reports.fills) > 0:
+                specs = load_instrument_specs(spec_path)
+
+                df = reports.fills
+                px_col = next(
+                    (c for c in ("price", "fill_price", "avg_price", "avg_px", "px") if c in df.columns),
+                    None,
+                )
+                qty_col = next(
+                    (c for c in ("quantity", "qty", "size", "filled_qty", "filled_quantity") if c in df.columns),
+                    None,
+                )
+                inst_col = next((c for c in ("instrument_id", "instrument") if c in df.columns), None)
+
+                if px_col and qty_col:
+                    px = pd.to_numeric(df[px_col], errors="coerce").abs()
+                    qty = pd.to_numeric(df[qty_col], errors="coerce").abs()
+                    notionals = (px * qty).fillna(0.0)
+
+                    if inst_col:
+                        # Per-instrument fee rates if instrument_id is present.
+                        fees = 0.0
+                        for inst_id_val, idx in df.groupby(inst_col).groups.items():
+                            spec = specs.get(str(inst_id_val))
+                            if spec is None:
+                                continue
+                            tf = float(Decimal(str(spec.taker_fee)))
+                            fees += float(notionals.loc[list(idx)].sum()) * tf
+                        estimated_fees_taker = fees if fees > 0.0 else 0.0
+                    else:
+                        # Single-instrument fallback (conservative): use first suite instrument taker fee.
+                        inst0 = str(cfg.universe.instrument_ids[0]) if cfg.universe.instrument_ids else ""
+                        spec0 = specs.get(inst0)
+                        if spec0 is not None:
+                            tf0 = float(Decimal(str(spec0.taker_fee)))
+                            estimated_fees_taker = float(notionals.sum()) * tf0
+        except Exception:
+            estimated_fees_taker = None
+
         summary = {
             "schema_version": "1",
             "experiment_id": cfg.output.suite_name or cfg.resolved_suite_id(),
@@ -4633,6 +4954,12 @@ def _run_one(
                 "account_report_csv": "account_report.csv",
             },
         }
+
+        if estimated_fees_taker is not None:
+            summary["performance"]["estimated_fees_taker"] = float(estimated_fees_taker)
+            summary["performance"]["estimated_fee_assumption"] = "taker_on_all_fills"
+            if perf.total_pnl is not None:
+                summary["performance"]["estimated_pnl_after_taker_fees"] = float(perf.total_pnl) - float(estimated_fees_taker)
 
         resolved_cfg = {
             "schema_version": "1",
