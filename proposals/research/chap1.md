@@ -65,11 +65,14 @@ For bars (1-minute):
 
 - $ O_k, H_k, L_k, C_k $: open/high/low/close prices in bar $ k $.
 - Bar return (close-to-close) in log space:
-  $$ r_k := \log\!\left(\frac{C_k}{C_{k-1}}\right). $$
+  
+  $$
+  r_k := \log\!\left(\frac{C_k}{C_{k-1}}\right).
+  $$
 
 For aggTrades:
 
-- Each record $i$ has:
+- Each record $ i $ has:
   - price $ p_i $,
   - quantity $ q_i $,
   - timestamp $ \tau_i $ (ms),
@@ -236,11 +239,13 @@ This is not “exchange open/close” (crypto has none); it is a **statistical w
 For session $ d $:
 
 - “Overnight” (boundary) return:
+  
   $$
   r^{(o)}_d := \log\!\left(\frac{O_d}{C_{d-1}}\right).
   $$
 
 - “Open-to-close” return:
+  
   $$
   r^{(c)}_d := \log\!\left(\frac{C_d}{O_d}\right).
   $$
@@ -297,6 +302,7 @@ For every UTC day $ d $:
    - compute $ u_k, d_k, c_k $ and $ \widehat{\sigma}^2_{\mathrm{RS},k} $.
 
 3. Aggregate RS intraday variance:
+   
    $$
    \widehat{\sigma}^2_{\mathrm{RS},d} := \sum_{k \in d} \widehat{\sigma}^2_{\mathrm{RS},k}.
    $$
@@ -312,6 +318,7 @@ Define **Factor 1** as (one of):
 - variance factor: $ F^{(\mathrm{vol})}_t := \widehat{\sigma}^2_{\mathrm{YZ}}(t) $,
 - volatility factor: $ \sqrt{\widehat{\sigma}^2_{\mathrm{YZ}}(t)} $,
 - standardized surprise:
+  
   $$
   Z^{(\mathrm{vol})}_t := \frac{\widehat{\sigma}^2_{\mathrm{YZ}}(t) - \mathrm{EMA}(\widehat{\sigma}^2_{\mathrm{YZ}})(t)}{\mathrm{MAD}(\widehat{\sigma}^2_{\mathrm{YZ}})(t)}.
   $$
@@ -353,10 +360,12 @@ But you explicitly constrain us to aggTrades for the “flow” feature class. T
 Let $ [t-\Delta, t) $ be a fixed clock-time bucket (e.g., $\Delta=1$ second). Define:
 
 - Buyer-initiated volume:
+  
   $$
   V^+_{t,\Delta} := \sum_{i:\,\tau_i \in [t-\Delta,t)} \mathbf{1}\{s_i=+1\}\,q_i,
   $$
 - Seller-initiated volume:
+  
   $$
   V^-_{t,\Delta} := \sum_{i:\,\tau_i \in [t-\Delta,t)} \mathbf{1}\{s_i=-1\}\,q_i.
   $$
@@ -450,7 +459,7 @@ This is a material simplification (and a potential source of bias if `is_buyer_m
 A rigorous spec must note that VPIN has well-known critiques: its predictive power can be dominated by mechanical relationships with volume/trading intensity, and it may not behave as claimed around stress events depending on implementation details. ([kellogg.northwestern.edu](https://www.kellogg.northwestern.edu/faculty/research/detail/2014/vpin-and-the-flash-crash/?utm_source=openai))
 
 **Practical implication for our system design:**  
-We treat VPIN not as “truth” but as a **risk gate** and **execution control input** (e.g., widen spreads / accelerate liquidation avoidance), and we validate its incremental predictive power out-of-sample relative to simpler signed-flow metrics (e.g., $\widetilde{\mathrm{tOFI}}$, signed volume z-scores).
+We treat VPIN not as “truth” but as a **risk gate** and **execution control input** (e.g., widen spreads / accelerate liquidation avoidance), and we validate its incremental predictive power out-of-sample relative to simpler signed-flow metrics (e.g., $ \widetilde{\mathrm{tOFI}} $, signed volume z-scores).
 
 ---
 
@@ -495,6 +504,7 @@ Interpretation:
 At time $ t_k $, define feature vector $ \mathbf{f}_k \in \mathbb{R}^2 $:
 
 1. Volatility surprise (from Yang–Zhang):
+   
    $$
    f^{(1)}_k := Z^{(\mathrm{vol})}_{t_k}.
    $$
@@ -502,10 +512,12 @@ At time $ t_k $, define feature vector $ \mathbf{f}_k \in \mathbb{R}^2 $:
 2. Toxicity-adjusted signed flow:
    We need a scalar that is large when (a) there is directional imbalance and (b) toxicity is high.
    Define:
+   
    $$
    f^{(2)}_k := \widetilde{\mathrm{tOFI}}_{t_k,\Delta}\cdot g(\mathrm{VPIN}_{t_k}),
    $$
    where a natural choice is a monotone map such as:
+   
    $$
    g(v) := \max\{0, v - v_0\},
    $$
@@ -529,6 +541,7 @@ Here $ \mathbf{H} \in \mathbb{R}^{2 \times 1} $ is a loading vector (two scalars
 Let prior estimate at step $ k $ be $ \hat{\alpha}_{k|k-1} $ with variance $ P_{k|k-1} $.
 
 **Predict:**
+
 $$
 \hat{\alpha}_{k|k-1} = \phi \hat{\alpha}_{k-1|k-1}, \quad
 P_{k|k-1} = \phi^2 P_{k-1|k-1} + Q.
@@ -536,24 +549,29 @@ $$
 
 **Update:**
 Innovation:
+
 $$
 \mathbf{y}_k = \mathbf{f}_k - \mathbf{H}\hat{\alpha}_{k|k-1}.
 $$
 
 Innovation covariance:
+
 $$
 \mathbf{S}_k = \mathbf{H}P_{k|k-1}\mathbf{H}^\top + \mathbf{R}.
 $$
 
 Kalman gain:
+
 $$
 \mathbf{K}_k = P_{k|k-1}\mathbf{H}^\top \mathbf{S}_k^{-1}.
 $$
 
 Posterior:
+
 $$
 \hat{\alpha}_{k|k} = \hat{\alpha}_{k|k-1} + \mathbf{K}_k \mathbf{y}_k,
 $$
+
 $$
 P_{k|k} = (1 - \mathbf{K}_k \mathbf{H}) P_{k|k-1}.
 $$
