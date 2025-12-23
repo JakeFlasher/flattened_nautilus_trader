@@ -50,7 +50,7 @@ We work with three time scales:
 1. **Trade-time / event-time** indexed by $ i \in \{1,2,\dots\} $, where each event corresponds to one row in:
    - `data/raw/futures/daily/aggTrades/BTCUSDT-aggTrades-YYYY-MM-DD.csv`
 
-2. **Bar-time** indexed by \\( k \in \{1,2,\dots\} \\), where each bar corresponds to one row in:
+2. **Bar-time** indexed by $k \in \{1,2,\dots\}$, where each bar corresponds to one row in:
    - `data/raw/futures/daily/klines_1m/BTCUSDT-1m-YYYY-MM-DD.csv`
 
 3. **Decision-time** $ t $ at which we update our target position $ \theta_t $. In a practical HFT engine, $ t $ may coincide with every bookTicker update, every trade, or a fixed-rate timer; mathematically, we treat $ t $ as continuous but implement in discrete ticks.
