@@ -69,7 +69,7 @@ For bars (1-minute):
 
 For aggTrades:
 
-- Each record $ i $ has:
+- Each record $i$ has:
   - price $ p_i $,
   - quantity $ q_i $,
   - timestamp $ \tau_i $ (ms),
