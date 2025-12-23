@@ -37,7 +37,7 @@
    3.4. Known failure modes / critiques (mechanical correlation with volume)  
 4. **Signal fusion: latent alpha state and target position** (pp. 21–22)  
    4.1. Multivariate Kalman filter for online fusion  
-   4.2. Converting posterior alpha into a target position signal$\theta_t$
+   4.2. Converting posterior alpha into a target position signal $\theta_t$
 
 ---
 
@@ -47,38 +47,35 @@
 
 We work with three time scales:
 
-1. **Trade-time / event-time** indexed by$i \in \{1,2,\dots\}$, where each event corresponds to one row in:
+1. **Trade-time / event-time** indexed by $i \in \{1,2,\dots\}$, where each event corresponds to one row in:
    - `data/raw/futures/daily/aggTrades/BTCUSDT-aggTrades-YYYY-MM-DD.csv`
 
-2. **Bar-time** indexed by$k \in \{1,2,\dots\}$, where each bar corresponds to one row in:
+2. **Bar-time** indexed by $k \in \{1,2,\dots\}$, where each bar corresponds to one row in:
    - `data/raw/futures/daily/klines_1m/BTCUSDT-1m-YYYY-MM-DD.csv`
 
-3. **Decision-time**$t$at which we update our target position$\theta_t$. In a practical HFT engine,$t$may coincide with every bookTicker update, every trade, or a fixed-rate timer; mathematically, we treat$t$as continuous but implement in discrete ticks.
+3. **Decision-time** $t$ at which we update our target position $\theta_t$. In a practical HFT engine, $t$ may coincide with every bookTicker update, every trade, or a fixed-rate timer; mathematically, we treat $t$ as continuous but implement in discrete ticks.
 
 ### Basic objects
 
--$P_t$: **latent efficient price** (unobserved) at time$t$.  
--$Y_t$: **observed price** (trade price, midquote, etc.) at time$t$.  
--$X_t = \log P_t$,$Z_t = \log Y_t$.
+- $P_t$: **latent efficient price** (unobserved) at time $t$.  
+- $Y_t$: **observed price** (trade price, midquote, etc.) at time $t$.  
+- $X_t = \log P_t$, $Z_t = \log Y_t$.
 
 For bars (1-minute):
 
--$O_k, H_k, L_k, C_k$: open/high/low/close prices in bar$k$.
+- $O_k, H_k, L_k, C_k$: open/high/low/close prices in bar $k$.
 - Bar return (close-to-close) in log space:
-  
- $$
-  r_k := \log\!\left(\frac{C_k}{C_{k-1}}\right).
- $$
+  $$ r_k := \log\!\left(\frac{C_k}{C_{k-1}}\right). $$
 
 For aggTrades:
 
-- Each record$i$has:
-  - price$p_i$,
-  - quantity$q_i$,
-  - timestamp$\tau_i$(ms),
-  - boolean `is_buyer_maker` (we denote$\mathrm{BM}_i \in \{0,1\}$).
+- Each record $i$ has:
+  - price $p_i$,
+  - quantity $q_i$,
+  - timestamp $\tau_i$ (ms),
+  - boolean `is_buyer_maker` (we denote $\mathrm{BM}_i \in \{0,1\}$).
 
-We will infer a **trade sign**$s_i \in \{+1,-1\}$using `is_buyer_maker` (details §1.3).
+We will infer a **trade sign** $s_i \in \{+1,-1\}$ using `is_buyer_maker` (details §1.3).
 
 ---
 
@@ -86,7 +83,7 @@ We will infer a **trade sign**$s_i \in \{+1,-1\}$using `is_buyer_maker` (details
 
 ### Definition 1 (Latent efficient log-price process)
 
-Model the latent efficient log-price$X_t$as an Itô semimartingale with jumps:
+Model the latent efficient log-price $X_t$ as an Itô semimartingale with jumps:
 
 $$
 dX_t = \mu_t\,dt + \sigma_t\,dW_t + dJ_t,
@@ -94,10 +91,10 @@ $$
 
 where:
 
--$\mu_t$is the (possibly stochastic) drift,
--$\sigma_t > 0$is the instantaneous volatility,
--$W_t$is standard Brownian motion,
--$J_t$is a pure-jump process (to capture liquidation cascades / news jumps typical in crypto).
+- $\mu_t$ is the (possibly stochastic) drift,
+- $\sigma_t > 0$ is the instantaneous volatility,
+- $W_t$ is standard Brownian motion,
+- $J_t$ is a pure-jump process (to capture liquidation cascades / news jumps typical in crypto).
 
 This is the minimum mathematically disciplined model that admits:
 - diffusion-driven micro-moves,
@@ -112,19 +109,19 @@ $$
 Z_t = X_t + \varepsilon_t,
 $$
 
-where$\varepsilon_t$captures bid–ask bounce, discreteness, latency, and trade price formation frictions.
+where $\varepsilon_t$ captures bid–ask bounce, discreteness, latency, and trade price formation frictions.
 
-This decomposition is the standard starting point for “microstructure noise” analysis. A central implication is that **sampling more frequently is not always better** when one estimates volatility from observed returns: realized variance can be biased by$\varepsilon_t$. ([nber.org](https://www.nber.org/papers/w9611?utm_source=openai))
+This decomposition is the standard starting point for “microstructure noise” analysis. A central implication is that **sampling more frequently is not always better** when one estimates volatility from observed returns: realized variance can be biased by $\varepsilon_t$. ([nber.org](https://www.nber.org/papers/w9611?utm_source=openai))
 
 ### Lemma 1 (Quadratic variation and integrated variance)
 
-Define the **integrated variance** (continuous component) over horizon$[t,t+T]$:
+Define the **integrated variance** (continuous component) over horizon \([t,t+T]\):
 
 $$
 \mathrm{IV}(t,t+T) := \int_t^{t+T} \sigma_s^2\,ds.
 $$
 
-If$X_t$is continuous (ignore jumps for a moment) and we observe$X_{t_j}$on a refining grid with mesh$\max_j |t_{j+1}-t_j| \to 0$, then:
+If $X_t$ is continuous (ignore jumps for a moment) and we observe $X_{t_j}$ on a refining grid with mesh $\max_j |t_{j+1}-t_j| \to 0$, then:
 
 $$
 \sum_{j} \left(X_{t_{j+1}} - X_{t_j}\right)^2 \;\xrightarrow{\;p\;}\; \mathrm{IV}(t,t+T).
@@ -134,13 +131,13 @@ $$
 
 ### Lemma 2 (Microstructure noise makes “sample as fast as possible” pathological)
 
-If instead we observe$Z_t = X_t + \varepsilon_t$with i.i.d.-like noise, then observed returns satisfy:
+If instead we observe $Z_t = X_t + \varepsilon_t$ with i.i.d.-like noise, then observed returns satisfy:
 
 $$
 \Delta Z_{t_j} = \Delta X_{t_j} + \Delta \varepsilon_{t_j},
 $$
 
-and the realized variance from$Z$includes terms like:
+and the realized variance from $Z$ includes terms like:
 
 $$
 \sum_j (\Delta \varepsilon_{t_j})^2,
@@ -160,7 +157,7 @@ We must estimate short-horizon variance robustly **without** full L2/L3 book rec
 
 #### Definition 3 (Log OHLC increments within a bar)
 
-For a bar$k$, define:
+For a bar $k$, define:
 
 $$
 u_k := \log\!\left(\frac{H_k}{O_k}\right), \quad
@@ -168,11 +165,11 @@ d_k := \log\!\left(\frac{L_k}{O_k}\right), \quad
 c_k := \log\!\left(\frac{C_k}{O_k}\right).
 $$
 
-Note:$u_k \ge 0$,$d_k \le 0$,$c_k \in \mathbb{R}$.
+Note: $u_k \ge 0$, $d_k \le 0$, $c_k \in \mathbb{R}$.
 
 #### Definition 4 (Rogers–Satchell per-bar variance contribution)
 
-The Rogers–Satchell variance contribution for bar$k$is:
+The Rogers–Satchell variance contribution for bar $k$ is:
 
 $$
 \widehat{\sigma}^2_{\mathrm{RS},k}
@@ -180,7 +177,7 @@ $$
 u_k(u_k - c_k) + d_k(d_k - c_k).
 $$
 
-Over a window of$n$bars (e.g., last$n$minutes), the RS estimator is:
+Over a window of $n$ bars (e.g., last $n$ minutes), the RS estimator is:
 
 $$
 \widehat{\sigma}^2_{\mathrm{RS}}(t)
@@ -198,15 +195,15 @@ $$
 X_s = X_0 + \mu s + \sigma W_s, \quad s\in[0,\Delta],
 $$
 
-with constant drift$\mu$and volatility$\sigma$over the bar. Then the RS estimator satisfies:
+with constant drift $\mu$ and volatility $\sigma$ over the bar. Then the RS estimator satisfies:
 
 $$
 \mathbb{E}\!\left[\widehat{\sigma}^2_{\mathrm{RS},k}\right] = \sigma^2 \Delta,
 $$
 
-i.e., it does not depend on$\mu$.
+i.e., it does not depend on $\mu$.
 
-**Proof logic (sketch):** The RS functional is constructed to cancel drift terms when integrating over the joint law of$(H,L,C)$under Brownian motion with drift; it uses mixed products of high/open/close and low/open/close log-ratios that eliminate the drift contribution. This is precisely why RS is used when$\mu \neq 0$(trending markets). ([researchgate.net](https://www.researchgate.net/publication/38362991_Estimating_Variance_From_High_Low_and_Closing_Prices?utm_source=openai))
+**Proof logic (sketch):** The RS functional is constructed to cancel drift terms when integrating over the joint law of \((H,L,C)\) under Brownian motion with drift; it uses mixed products of high/open/close and low/open/close log-ratios that eliminate the drift contribution. This is precisely why RS is used when $\mu \neq 0$ (trending markets). ([researchgate.net](https://www.researchgate.net/publication/38362991_Estimating_Variance_From_High_Low_and_Closing_Prices?utm_source=openai))
 
 > **Microstructure note:** RS (like most OHLC estimators) assumes “true” high/low are observed. With discretely sampled markets and aggregation, we observe maxima/minima over sampled trades, not the continuous path extrema. This induces error; however range-based estimators can remain comparatively robust in the presence of microstructure noise (in simulation/empirical studies). ([econpapers.repec.org](https://econpapers.repec.org/RePEc%3Awly%3Ajfutmk%3Av%3A26%3Ay%3A2006%3Ai%3A3%3Ap%3A297-313?utm_source=openai))
 
@@ -228,33 +225,31 @@ This is classically formulated for markets with a daily open/close. Crypto is 24
 
 Let a *session* be a fixed calendar partition, e.g.:
 
-- Session$d$is$[d\text{ 00:00:00 UTC}, (d+1)\text{ 00:00:00 UTC})$.
+- Session $d$ is \([d\text{ 00:00:00 UTC}, (d+1)\text{ 00:00:00 UTC})\).
 
-Define session open$O_d$as the first 1m bar open in session$d$, and session close$C_d$as the last 1m bar close in session$d$.
+Define session open $O_d$ as the first 1m bar open in session $d$, and session close $C_d$ as the last 1m bar close in session $d$.
 
 This is not “exchange open/close” (crypto has none); it is a **statistical window boundary**.
 
 #### Definition 6 (Close-to-open and open-to-close log returns)
 
-For session$d$:
+For session $d$:
 
 - “Overnight” (boundary) return:
-  
- $$
+  $$
   r^{(o)}_d := \log\!\left(\frac{O_d}{C_{d-1}}\right).
- $$
+  $$
 
 - “Open-to-close” return:
-  
- $$
+  $$
   r^{(c)}_d := \log\!\left(\frac{C_d}{O_d}\right).
- $$
+  $$
 
-Within-session, define Rogers–Satchell variance$\widehat{\sigma}^2_{\mathrm{RS},d}$computed from intraday OHLC bars (here, 1m bars aggregated over that session).
+Within-session, define Rogers–Satchell variance $\widehat{\sigma}^2_{\mathrm{RS},d}$ computed from intraday OHLC bars (here, 1m bars aggregated over that session).
 
 #### Definition 7 (Yang–Zhang volatility estimator)
 
-Yang–Zhang proposes (for a window of$m$sessions) an estimator of total variance:
+Yang–Zhang proposes (for a window of $m$ sessions) an estimator of total variance:
 
 $$
 \widehat{\sigma}^2_{\mathrm{YZ}}
@@ -268,24 +263,24 @@ $$
 
 where:
 
--$\widehat{\sigma}^2_o$is the sample variance of$r^{(o)}_d$over the window,
--$\widehat{\sigma}^2_c$is the sample variance of$r^{(c)}_d$over the window,
--$\widehat{\sigma}^2_{\mathrm{RS}}$is the average RS variance over the window,
--$k$is a weighting factor derived in the Yang–Zhang paper (chosen to minimize variance among a class of estimators with the stated invariances). ([econpapers.repec.org](https://econpapers.repec.org/article/ucpjnlbus/v_3a73_3ay_3a2000_3ai_3a3_3ap_3a477-91.htm?utm_source=openai))
+- $\widehat{\sigma}^2_o$ is the sample variance of $r^{(o)}_d$ over the window,
+- $\widehat{\sigma}^2_c$ is the sample variance of $r^{(c)}_d$ over the window,
+- $\widehat{\sigma}^2_{\mathrm{RS}}$ is the average RS variance over the window,
+- $k$ is a weighting factor derived in the Yang–Zhang paper (chosen to minimize variance among a class of estimators with the stated invariances). ([econpapers.repec.org](https://econpapers.repec.org/article/ucpjnlbus/v_3a73_3ay_3a2000_3ai_3a3_3ap_3a477-91.htm?utm_source=openai))
 
 > The defining property is **drift independence** and **consistency with opening jumps** in the continuous limit. ([econpapers.repec.org](https://econpapers.repec.org/article/ucpjnlbus/v_3a73_3ay_3a2000_3ai_3a3_3ap_3a477-91.htm?utm_source=openai))
 
 #### Lemma 4 (Why YZ dominates close-to-close under microstructure + regime boundary effects)
 
-Let$\widehat{\sigma}^2_{\mathrm{CC}}$denote close-to-close variance from$\log(C_d/C_{d-1})$. Then, informally:
+Let $\widehat{\sigma}^2_{\mathrm{CC}}$ denote close-to-close variance from $\log(C_d/C_{d-1})$. Then, informally:
 
--$\widehat{\sigma}^2_{\mathrm{CC}}$uses **one point per session**.
--$\widehat{\sigma}^2_{\mathrm{YZ}}$uses:
-  - boundary discontinuity proxy$r^{(o)}_d$,
-  - within-session directional move$r^{(c)}_d$,
+- $\widehat{\sigma}^2_{\mathrm{CC}}$ uses **one point per session**.
+- $\widehat{\sigma}^2_{\mathrm{YZ}}$ uses:
+  - boundary discontinuity proxy $r^{(o)}_d$,
+  - within-session directional move $r^{(c)}_d$,
   - within-session extremes via RS.
 
-Thus$\widehat{\sigma}^2_{\mathrm{YZ}}$is strictly richer (lower estimator variance under the model class it targets), and is designed to be drift independent and robust to boundary jumps. ([econpapers.repec.org](https://econpapers.repec.org/article/ucpjnlbus/v_3a73_3ay_3a2000_3ai_3a3_3ap_3a477-91.htm?utm_source=openai))
+Thus $\widehat{\sigma}^2_{\mathrm{YZ}}$ is strictly richer (lower estimator variance under the model class it targets), and is designed to be drift independent and robust to boundary jumps. ([econpapers.repec.org](https://econpapers.repec.org/article/ucpjnlbus/v_3a73_3ay_3a2000_3ai_3a3_3ap_3a477-91.htm?utm_source=openai))
 
 **Crypto nuance (important):** “Overnight” is not literal; it is “across the boundary of our partition.” In a 24/7 market, the boundary return can still capture predictable discontinuities driven by global session liquidity and macro release schedules. ([arxiv.org](https://arxiv.org/abs/2306.17095?utm_source=openai))
 
@@ -293,35 +288,33 @@ Thus$\widehat{\sigma}^2_{\mathrm{YZ}}$is strictly richer (lower estimator varian
 
 ### 1.3.3 Deliverable: factor construction from your *exact* files
 
-For every UTC day$d$:
+For every UTC day $d$:
 
 1. Load:
    - `data/raw/futures/daily/klines_1m/BTCUSDT-1m-YYYY-MM-DD.csv`
 
-2. For every 1-minute bar$k$in that day:
-   - compute$u_k, d_k, c_k$and$\widehat{\sigma}^2_{\mathrm{RS},k}$.
+2. For every 1-minute bar $k$ in that day:
+   - compute $u_k, d_k, c_k$ and $\widehat{\sigma}^2_{\mathrm{RS},k}$.
 
 3. Aggregate RS intraday variance:
-   
-  $$
+   $$
    \widehat{\sigma}^2_{\mathrm{RS},d} := \sum_{k \in d} \widehat{\sigma}^2_{\mathrm{RS},k}.
-  $$
+   $$
 
-4. Construct session open/close$O_d, C_d$from first/last bar of day and compute:
-   -$r^{(o)}_d$,$r^{(c)}_d$.
+4. Construct session open/close $O_d, C_d$ from first/last bar of day and compute:
+   - $r^{(o)}_d$, $r^{(c)}_d$.
 
-5. Over a rolling window of$m$days, compute:
-   -$\widehat{\sigma}^2_o, \widehat{\sigma}^2_c, \widehat{\sigma}^2_{\mathrm{RS}}$,
-   - then$\widehat{\sigma}^2_{\mathrm{YZ}}$.
+5. Over a rolling window of $m$ days, compute:
+   - $\widehat{\sigma}^2_o, \widehat{\sigma}^2_c, \widehat{\sigma}^2_{\mathrm{RS}}$,
+   - then $\widehat{\sigma}^2_{\mathrm{YZ}}$.
 
 Define **Factor 1** as (one of):
-- variance factor:$F^{(\mathrm{vol})}_t := \widehat{\sigma}^2_{\mathrm{YZ}}(t)$,
-- volatility factor:$\sqrt{\widehat{\sigma}^2_{\mathrm{YZ}}(t)}$,
+- variance factor: $F^{(\mathrm{vol})}_t := \widehat{\sigma}^2_{\mathrm{YZ}}(t)$,
+- volatility factor: $\sqrt{\widehat{\sigma}^2_{\mathrm{YZ}}(t)}$,
 - standardized surprise:
-  
- $$
+  $$
   Z^{(\mathrm{vol})}_t := \frac{\widehat{\sigma}^2_{\mathrm{YZ}}(t) - \mathrm{EMA}(\widehat{\sigma}^2_{\mathrm{YZ}})(t)}{\mathrm{MAD}(\widehat{\sigma}^2_{\mathrm{YZ}})(t)}.
- $$
+  $$
 
 The final choice depends on how you fuse with flow toxicity; we will do this in §1.5.
 
@@ -353,22 +346,20 @@ This is the simplest **self-contained** sign inference possible under your const
 
 The classical OFI in Cont–Kukanov–Stoikov is defined from L1 queue changes at best bid/ask, not from trades alone. ([arxiv.org](https://arxiv.org/abs/1011.6402?utm_source=openai))
 
-But you explicitly constrain us to aggTrades for the “flow” feature class. Therefore we define a **trade-flow imbalance** (call it$\mathrm{tOFI}$):
+But you explicitly constrain us to aggTrades for the “flow” feature class. Therefore we define a **trade-flow imbalance** (call it $\mathrm{tOFI}$):
 
 #### Definition 8 (Trade-flow OFI over a time interval)
 
-Let$[t-\Delta, t)$be a fixed clock-time bucket (e.g.,$\Delta=1$second). Define:
+Let $[t-\Delta, t)$ be a fixed clock-time bucket (e.g., \(\Delta=1\) second). Define:
 
 - Buyer-initiated volume:
-  
- $$
+  $$
   V^+_{t,\Delta} := \sum_{i:\,\tau_i \in [t-\Delta,t)} \mathbf{1}\{s_i=+1\}\,q_i,
- $$
+  $$
 - Seller-initiated volume:
-  
- $$
+  $$
   V^-_{t,\Delta} := \sum_{i:\,\tau_i \in [t-\Delta,t)} \mathbf{1}\{s_i=-1\}\,q_i.
- $$
+  $$
 
 Then:
 
@@ -376,7 +367,7 @@ $$
 \mathrm{tOFI}_{t,\Delta} := V^+_{t,\Delta} - V^-_{t,\Delta}.
 $$
 
-A normalized version (bounded in$[-1,1]$):
+A normalized version (bounded in \([-1,1]\)):
 
 $$
 \widetilde{\mathrm{tOFI}}_{t,\Delta}
@@ -398,24 +389,24 @@ VPIN was designed explicitly for high-frequency contexts by operating in **volum
 
 #### Definition 9 (Volume clock and buckets)
 
-Fix a **bucket volume**$V_b > 0$(units: BTC contracts or BTC quantity). Construct buckets sequentially by consuming trades in time order:
+Fix a **bucket volume** $V_b > 0$ (units: BTC contracts or BTC quantity). Construct buckets sequentially by consuming trades in time order:
 
-Let$B_j$be bucket$j$consisting of consecutive trades whose quantities sum to$V_b$(except possibly the last trade is fractionally split).
+Let $B_j$ be bucket $j$ consisting of consecutive trades whose quantities sum to $V_b$ (except possibly the last trade is fractionally split).
 
-Formally, let$\mathcal{I}_j$be the (possibly fractional) set of trade indices allocated to bucket$j$, such that:
+Formally, let $\mathcal{I}_j$ be the (possibly fractional) set of trade indices allocated to bucket $j$, such that:
 
 $$
 \sum_{i \in \mathcal{I}_j} q_i = V_b.
 $$
 
-Within bucket$j$, define:
+Within bucket $j$, define:
 
 $$
 V^{+}_j := \sum_{i \in \mathcal{I}_j} \mathbf{1}\{s_i=+1\}\,q_i, \quad
 V^{-}_j := \sum_{i \in \mathcal{I}_j} \mathbf{1}\{s_i=-1\}\,q_i,
 $$
 
-so$V^{+}_j + V^{-}_j = V_b$.
+so $V^{+}_j + V^{-}_j = V_b$.
 
 #### Definition 10 (Bucket imbalance)
 
@@ -427,13 +418,13 @@ $$
 
 #### Definition 11 (VPIN)
 
-Let$n$be the rolling window length in number of buckets. VPIN at bucket time$j$is:
+Let $n$ be the rolling window length in number of buckets. VPIN at bucket time $j$ is:
 
 $$
 \mathrm{VPIN}_j := \frac{1}{n V_b}\sum_{k=j-n+1}^{j} I_k.
 $$
 
-So$\mathrm{VPIN}_j \in [0,1]$.
+So $\mathrm{VPIN}_j \in [0,1]$.
 
 This is the “pure” VPIN construction: rolling average of normalized volume imbalance in equal-volume buckets. ([academic.oup.com](https://academic.oup.com/rfs/article-abstract/25/5/1457/1569929?utm_source=openai))
 
@@ -448,7 +439,7 @@ Your dataset already gives `is_buyer_maker`, which is a direct trade-direction p
 - We do **not** need Lee–Ready-style inference (quote rule) or tick rule.
 - We do **not** need bulk classification based on returns distribution.
 
-We can interpret our sign$s_i$as the output of the classification procedure and proceed.
+We can interpret our sign $s_i$ as the output of the classification procedure and proceed.
 
 This is a material simplification (and a potential source of bias if `is_buyer_maker` behaves differently than assumed), but it is the only disciplined approach under your “no external APIs” + “aggTrades only” constraints.
 
@@ -459,11 +450,11 @@ This is a material simplification (and a potential source of bias if `is_buyer_m
 A rigorous spec must note that VPIN has well-known critiques: its predictive power can be dominated by mechanical relationships with volume/trading intensity, and it may not behave as claimed around stress events depending on implementation details. ([kellogg.northwestern.edu](https://www.kellogg.northwestern.edu/faculty/research/detail/2014/vpin-and-the-flash-crash/?utm_source=openai))
 
 **Practical implication for our system design:**  
-We treat VPIN not as “truth” but as a **risk gate** and **execution control input** (e.g., widen spreads / accelerate liquidation avoidance), and we validate its incremental predictive power out-of-sample relative to simpler signed-flow metrics (e.g.,$\widetilde{\mathrm{tOFI}}$, signed volume z-scores).
+We treat VPIN not as “truth” but as a **risk gate** and **execution control input** (e.g., widen spreads / accelerate liquidation avoidance), and we validate its incremental predictive power out-of-sample relative to simpler signed-flow metrics (e.g., \(\widetilde{\mathrm{tOFI}}\), signed volume z-scores).
 
 ---
 
-## 1.5 Signal combination into a single target position$\theta_t$
+## 1.5 Signal combination into a single target position $\theta_t$
 
 You required either:
 
@@ -480,13 +471,13 @@ We will define a **state-space model** and a **Kalman filter** because it provid
 
 We need a latent object that maps naturally to a position. The minimal choice is:
 
--$\alpha_t$: *instantaneous expected return (drift) over the next decision interval*, measured in log-return units per unit time.
+- $\alpha_t$: *instantaneous expected return (drift) over the next decision interval*, measured in log-return units per unit time.
 
 This is not claiming markets have stable drift; it is a local predictive component induced by microstructure (order flow imbalance) and transient volatility regimes.
 
 ### Definition 12 (Alpha state dynamics)
 
-Assume$\alpha_t$follows a mean-reverting AR(1) in discrete time at decision timestamps$t_k$:
+Assume $\alpha_t$ follows a mean-reverting AR(1) in discrete time at decision timestamps $t_k$:
 
 $$
 \alpha_{k+1} = \phi \alpha_k + \eta_k,
@@ -496,32 +487,29 @@ $$
 
 Interpretation:
 
--$\phi$encodes **alpha half-life** (short for HFT),
--$Q$is innovation variance capturing regime shifts.
+- $\phi$ encodes **alpha half-life** (short for HFT),
+- $Q$ is innovation variance capturing regime shifts.
 
 ### Definition 13 (Observation vector from your two factors)
 
-At time$t_k$, define feature vector$\mathbf{f}_k \in \mathbb{R}^2$:
+At time $t_k$, define feature vector $\mathbf{f}_k \in \mathbb{R}^2$:
 
 1. Volatility surprise (from Yang–Zhang):
-   
-  $$
+   $$
    f^{(1)}_k := Z^{(\mathrm{vol})}_{t_k}.
-  $$
+   $$
 
 2. Toxicity-adjusted signed flow:
    We need a scalar that is large when (a) there is directional imbalance and (b) toxicity is high.
    Define:
-   
-  $$
+   $$
    f^{(2)}_k := \widetilde{\mathrm{tOFI}}_{t_k,\Delta}\cdot g(\mathrm{VPIN}_{t_k}),
-  $$
+   $$
    where a natural choice is a monotone map such as:
-   
-  $$
+   $$
    g(v) := \max\{0, v - v_0\},
-  $$
-   with$v_0$a “toxicity threshold” (e.g., a high quantile of VPIN).
+   $$
+   with $v_0$ a “toxicity threshold” (e.g., a high quantile of VPIN).
 
 ### Definition 14 (Linear observation model)
 
@@ -532,16 +520,15 @@ $$
 \quad \mathbf{v}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{R}).
 $$
 
-Here$\mathbf{H} \in \mathbb{R}^{2 \times 1}$is a loading vector (two scalars), and$\mathbf{R}$is the observation noise covariance.
+Here $\mathbf{H} \in \mathbb{R}^{2 \times 1}$ is a loading vector (two scalars), and $\mathbf{R}$ is the observation noise covariance.
 
 > This model says: features are noisy linear sensors of a latent drift-like alpha.
 
 ### Kalman filter recursion (for completeness)
 
-Let prior estimate at step$k$be$\hat{\alpha}_{k|k-1}$with variance$P_{k|k-1}$.
+Let prior estimate at step $k$ be $\hat{\alpha}_{k|k-1}$ with variance $P_{k|k-1}$.
 
 **Predict:**
-
 $$
 \hat{\alpha}_{k|k-1} = \phi \hat{\alpha}_{k-1|k-1}, \quad
 P_{k|k-1} = \phi^2 P_{k-1|k-1} + Q.
@@ -549,38 +536,33 @@ $$
 
 **Update:**
 Innovation:
-
 $$
 \mathbf{y}_k = \mathbf{f}_k - \mathbf{H}\hat{\alpha}_{k|k-1}.
 $$
 
 Innovation covariance:
-
 $$
 \mathbf{S}_k = \mathbf{H}P_{k|k-1}\mathbf{H}^\top + \mathbf{R}.
 $$
 
 Kalman gain:
-
 $$
 \mathbf{K}_k = P_{k|k-1}\mathbf{H}^\top \mathbf{S}_k^{-1}.
 $$
 
 Posterior:
-
 $$
 \hat{\alpha}_{k|k} = \hat{\alpha}_{k|k-1} + \mathbf{K}_k \mathbf{y}_k,
 $$
-
 $$
 P_{k|k} = (1 - \mathbf{K}_k \mathbf{H}) P_{k|k-1}.
 $$
 
 ---
 
-### 1.5.2 From posterior alpha to target position$\theta_t$
+### 1.5.2 From posterior alpha to target position $\theta_t$
 
-We now define$\theta_k$(position in contracts / BTC notional units) as a **risk-scaled** function of posterior alpha and posterior variance.
+We now define $\theta_k$ (position in contracts / BTC notional units) as a **risk-scaled** function of posterior alpha and posterior variance.
 
 A minimal “Kelly-like” local mapping (without yet doing full Chapter 3) is:
 
@@ -595,9 +577,9 @@ $$
 
 where:
 
--$\widehat{\sigma}^2_{\mathrm{YZ}}(t_k)$is Factor 1,
--$\gamma>0$is a risk-aversion / scaling constant,
--$\theta_{\max}$is a hard cap.
+- $\widehat{\sigma}^2_{\mathrm{YZ}}(t_k)$ is Factor 1,
+- $\gamma>0$ is a risk-aversion / scaling constant,
+- $\theta_{\max}$ is a hard cap.
 
 **Interpretation:**  
 - High predicted drift → larger position.  
@@ -612,25 +594,25 @@ where:
 
 From `data/raw/futures/daily/klines_1m/BTCUSDT-1m-*.csv`:
 
-- Compute Rogers–Satchell intrabar variance contributions$\widehat{\sigma}^2_{\mathrm{RS},k}$.
-- Aggregate into Yang–Zhang variance$\widehat{\sigma}^2_{\mathrm{YZ}}(t)$over rolling day windows. ([econpapers.repec.org](https://econpapers.repec.org/article/ucpjnlbus/v_3a73_3ay_3a2000_3ai_3a3_3ap_3a477-91.htm?utm_source=openai))
+- Compute Rogers–Satchell intrabar variance contributions $\widehat{\sigma}^2_{\mathrm{RS},k}$.
+- Aggregate into Yang–Zhang variance $\widehat{\sigma}^2_{\mathrm{YZ}}(t)$ over rolling day windows. ([econpapers.repec.org](https://econpapers.repec.org/article/ucpjnlbus/v_3a73_3ay_3a2000_3ai_3a3_3ap_3a477-91.htm?utm_source=openai))
 
 ### Deliverable B — Factor 2 (Flow toxicity)
 
 From `data/raw/futures/daily/aggTrades/BTCUSDT-aggTrades-*.csv`:
 
-- Infer trade signs$s_i$from `is_buyer_maker`.
-- Compute trade-flow imbalance$\widetilde{\mathrm{tOFI}}_{t,\Delta}$.
-- Compute VPIN in volume time using equal-volume buckets$V_b$. ([academic.oup.com](https://academic.oup.com/rfs/article-abstract/25/5/1457/1569929?utm_source=openai))
+- Infer trade signs $s_i$ from `is_buyer_maker`.
+- Compute trade-flow imbalance $\widetilde{\mathrm{tOFI}}_{t,\Delta}$.
+- Compute VPIN in volume time using equal-volume buckets $V_b$. ([academic.oup.com](https://academic.oup.com/rfs/article-abstract/25/5/1457/1569929?utm_source=openai))
 
 ### Deliverable C — Single target position signal
 
-- Fuse features into latent$\alpha_t$via Kalman filtering.
-- Map$\hat{\alpha}_{t|t}$and$\widehat{\sigma}^2_{\mathrm{YZ}}(t)$into$\theta_t$via risk-scaled clipping.
+- Fuse features into latent $\alpha_t$ via Kalman filtering.
+- Map $\hat{\alpha}_{t|t}$ and $\widehat{\sigma}^2_{\mathrm{YZ}}(t)$ into $\theta_t$ via risk-scaled clipping.
 
 ---
 
-If you want, I will proceed next with **Chapter 2 (NautilusTrader Architecture)** and give (a) the exact `CSVDataLoader` logic for your `data/raw/futures/*` directory, (b) a strict event-driven update design (`on_bar` vs `on_quote_tick`), and (c) the TWAP-with-alpha-decay execution algorithm tied directly to$\theta_t$and VPIN-driven toxicity gating (citing the Nautilus docs you provided for Actors, Cache, Execution flow, and MessageBus behavior).
+If you want, I will proceed next with **Chapter 2 (NautilusTrader Architecture)** and give (a) the exact `CSVDataLoader` logic for your `data/raw/futures/*` directory, (b) a strict event-driven update design (`on_bar` vs `on_quote_tick`), and (c) the TWAP-with-alpha-decay execution algorithm tied directly to $\theta_t$ and VPIN-driven toxicity gating (citing the Nautilus docs you provided for Actors, Cache, Execution flow, and MessageBus behavior).
 
 ---
 Learn more:
