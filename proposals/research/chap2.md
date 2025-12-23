@@ -2,9 +2,9 @@
 
 This chapter specifies the **exact event-driven translation** of Chapter 1’s alpha components into NautilusTrader:
 
-- **Factor 1:** \( \sigma^2_{\mathrm{YZ}} \) (Yang–Zhang volatility) computed from **1-minute bars**.  
+- **Factor 1:** $\sigma^2_{\mathrm{YZ}}$ (Yang–Zhang volatility) computed from **1-minute bars**.  
 - **Factor 2:** **VPIN** (flow toxicity) computed from **tick-level `aggTrades`** (treated as trade ticks).  
-- **State:** \( \mathcal{L} \) (liquidity state) computed from **`bookTicker`** (top-of-book quotes).
+- **State:** $\mathcal{L}$ (liquidity state) computed from **`bookTicker`** (top-of-book quotes).
 
 **Strict dataset constraints (local CSV only):**
 
@@ -720,10 +720,10 @@ Every callback updates *only* O(1) incremental state. No pandas in the hot loop.
 
 Per-bar Rogers–Satchell contribution:
 
-- \( u_k = \log(H_k/O_k) \)
-- \( d_k = \log(L_k/O_k) \)
-- \( c_k = \log(C_k/O_k) \)
-- \( \widehat{\sigma}^2_{\mathrm{RS},k} = u_k(u_k - c_k) + d_k(d_k - c_k) \)
+- $u_k = \log(H_k/O_k)$
+- $d_k = \log(L_k/O_k)$
+- $c_k = \log(C_k/O_k)$
+- $\widehat{\sigma}^2_{\mathrm{RS},k} = u_k(u_k - c_k) + d_k(d_k - c_k)$
 
 We compute this in **O(1)** per bar, then only compute full YZ when a UTC day boundary is detected.
 
@@ -965,13 +965,13 @@ class AlphaStrategy(Strategy):
 
 ---
 
-### 2.3.3 `on_quote_tick`: liquidity state \( \mathcal{L} \) and synchronization with trades
+### 2.3.3 `on_quote_tick`: liquidity state $\mathcal{L}$ and synchronization with trades
 
-We derive a minimal \( \mathcal{L} \) from **top-of-book**:
+We derive a minimal $\mathcal{L}$ from **top-of-book**:
 
 - Midprice \(m_t = \frac{b_t + a_t}{2}\)
 - Spread \(s_t = a_t - b_t\)
-- Spread in bps: \( \text{spread\_bps} = 10^4 \cdot s_t / m_t \)
+- Spread in bps: $\text{spread\_bps} = 10^4 \cdot s_t / m_t$
 - Top sizes: \(q^{bid}_t, q^{ask}_t\)
 
 Then classify low liquidity if:
@@ -1303,7 +1303,7 @@ Below is the **single-tick** path you must preserve.
   - Imbalance \(I_j\): `abs(buy_vol - sell_vol)`  
   - VPIN: `sum_imbalance / (n * V_b)`
 
-- **Liquidity state \( \mathcal{L} \):**  
+- **Liquidity state $\mathcal{L}$:**  
   Implemented in `AlphaStrategy.on_quote_tick`.  
   - Spread bps: `10_000 * (ask-bid)/mid`  
   - Low-liquidity gate: spread and/or top size thresholds
