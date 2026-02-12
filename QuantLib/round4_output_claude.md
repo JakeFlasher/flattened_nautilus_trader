@@ -1,3 +1,5 @@
+#test
+
 **File 1: `pricingengines/vanilla/fdblackscholesvanillaengine.hpp` (MODIFIED)**
 
 ```cpp
@@ -940,5 +942,6 @@ namespace QuantLib {
 **Design notes for Round 5 (test harness):**
 
 All three Black-Scholes FD engines now expose `useExponentialFitting` as a trailing constructor parameter with default `false`, preserving full backward compatibility. The parameter flows through to `FdmSolverDesc` (metadata) and `FdmBlackScholesSolver` (operator selection). The barrier engine propagates the flag to its internal vanilla and rebate sub-engines for in-barrier calculations.
+
 
 The `MakeFdBlackScholesVanillaEngine` builder provides `withExponentialFitting()` for fluent configuration. The recommended configurations for testing are: `FdmSchemeDesc::FittedImplicitEuler()` with `useExponentialFitting=true` for the pure Duffy approach; `FdmSchemeDesc::CrankNicolson()` with damping steps and `useExponentialFitting=true` for the Rannacher-CN hybrid; and `FdmSchemeDesc::RannacherCrankNicolson()` with `useExponentialFitting=true` for the self-contained Rannacher variant.
